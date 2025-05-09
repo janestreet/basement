@@ -49,7 +49,7 @@ module RwCell = struct
   ;;
 end
 
-let%expect_test ("[RwCell] basics" [@tags "runtime5-only", "no-js", "no-wasm"]) =
+let%expect_test "[RwCell] basics" =
   let ptr = RwCell.create 42 in
   let ptr' = RwCell.copy ptr in
   [%test_result: int] (RwCell.read ptr) ~expect:42;
@@ -90,7 +90,7 @@ exception ReadLockTestException of int myref
 
 type lost_capsule = |
 
-let%expect_test ("rwlock API" [@tags "runtime5-only", "no-js", "no-wasm"]) =
+let%expect_test "rwlock API" =
   (* [create]. *)
   let ptr =
     let (P k) = Capsule.create () in

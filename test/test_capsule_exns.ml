@@ -157,9 +157,7 @@ let%expect_test "[with_lock] other capsule" =
   [%expect {| ("Capsule.Encapsulated(_)") |}]
 ;;
 
-let%expect_test ("[with_write_lock] unencapsulated"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
+let%expect_test "[with_write_lock] unencapsulated" =
   Expect_test_helpers_base.require_does_raise ~show_backtrace (fun () ->
     let (P key) = Capsule.create () in
     let rw = Capsule.Rwlock.create key in
@@ -169,9 +167,7 @@ let%expect_test ("[with_write_lock] unencapsulated"
   [%expect {| (Failure fail) |}]
 ;;
 
-let%expect_test ("with_write_lock encapsulated"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
+let%expect_test "with_write_lock encapsulated" =
   Expect_test_helpers_base.require_does_raise ~show_backtrace (fun () ->
     let (P key) = Capsule.create () in
     let rw = Capsule.Rwlock.create key in
@@ -182,9 +178,7 @@ let%expect_test ("with_write_lock encapsulated"
   [%expect {| (Failure fail) |}]
 ;;
 
-let%expect_test ("with_write_lock encapsulated shared"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
+let%expect_test "with_write_lock encapsulated shared" =
   Expect_test_helpers_base.require_does_raise ~show_backtrace (fun () ->
     let (P key) = Capsule.create () in
     let rw = Capsule.Rwlock.create key in
@@ -196,9 +190,7 @@ let%expect_test ("with_write_lock encapsulated shared"
   [%expect {| (Failure fail) |}]
 ;;
 
-let%expect_test ("with_write_lock other capsule"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
+let%expect_test "with_write_lock other capsule" =
   let (P key) = Capsule.create () in
   let (_ : _) =
     Capsule.Key.with_password key ~f:(fun password ->
@@ -216,9 +208,7 @@ let%expect_test ("with_write_lock other capsule"
   [%expect {| ("Capsule.Encapsulated(_)") |}]
 ;;
 
-let%expect_test ("with_read_lock unencapsulated"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
+let%expect_test "with_read_lock unencapsulated" =
   Expect_test_helpers_base.require_does_raise ~show_backtrace (fun () ->
     let (P key) = Capsule.create () in
     let rw = Capsule.Rwlock.create key in
@@ -228,9 +218,7 @@ let%expect_test ("with_read_lock unencapsulated"
   [%expect {| (Failure fail) |}]
 ;;
 
-let%expect_test ("with_read_lock encapsulated shared"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
+let%expect_test "with_read_lock encapsulated shared" =
   Expect_test_helpers_base.require_does_raise ~show_backtrace (fun () ->
     let (P key) = Capsule.create () in
     let rw = Capsule.Rwlock.create key in
@@ -241,9 +229,7 @@ let%expect_test ("with_read_lock encapsulated shared"
   [%expect {| (Failure fail) |}]
 ;;
 
-let%expect_test ("with_read_lock other capsule"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
+let%expect_test "with_read_lock other capsule" =
   let (P key) = Capsule.create () in
   let (_ : _) =
     Capsule.Key.with_password key ~f:(fun password ->

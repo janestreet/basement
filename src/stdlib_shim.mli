@@ -14,36 +14,45 @@ external ignore_contended : 'a -> unit = "%ignore"
 
 external raise : exn -> 'a = "%reraise"
 external raise_notrace : exn -> 'a = "%raise_notrace"
+val failwith : string -> 'a
 
 module Atomic : sig
-  type 'a t := 'a Atomic.t
+  type 'a t := 'a Stdlib.Atomic.t
 
-  module Safe : sig
+  module Local : sig
     external make : 'a -> ('a t[@local_opt]) = "%makemutable"
-    external make_contended : 'a -> 'a t = "caml_atomic_make_contended"
-    external get : ('a t[@local_opt]) -> 'a = "%atomic_load"
-    external set : ('a t[@local_opt]) -> 'a -> unit = "caml_atomic_set_stub"
-    external exchange : ('a t[@local_opt]) -> 'a -> 'a = "%atomic_exchange"
-    external compare_and_set : ('a t[@local_opt]) -> 'a -> 'a -> bool = "%atomic_cas"
+    external make_contended : 'a -> ('a t[@local_opt]) = "caml_atomic_make_contended"
+    external get : 'a t -> 'a = "%atomic_load"
+    external set : 'a t -> 'a -> unit = "caml_atomic_set_stub"
+    external exchange : 'a t -> 'a -> 'a = "%atomic_exchange"
+    external compare_and_set : 'a t -> 'a -> 'a -> bool = "%atomic_cas"
+    external compare_exchange : 'a t -> 'a -> 'a -> 'a = "caml_atomic_compare_exchange_stub"
+    external fetch_and_add : int t -> int -> int = "%atomic_fetch_add"
+    external add : int t -> int -> unit = "caml_atomic_add_stub"
+    external sub : int t -> int -> unit = "caml_atomic_sub_stub"
+    external logand : int t -> int -> unit = "caml_atomic_land_stub"
+    external logor : int t -> int -> unit = "caml_atomic_lor_stub"
+    external logxor : int t -> int -> unit = "caml_atomic_lxor_stub"
+    val incr : int t -> unit
+    val decr : int t -> unit
+  end
 
-    external compare_exchange
-      :  ('a t[@local_opt])
-      -> 'a
-      -> 'a
-      -> 'a
-      = "caml_atomic_compare_exchange_stub"
-
-    external add : (int t[@local_opt]) -> int -> unit = "caml_atomic_add_stub"
-    external sub : (int t[@local_opt]) -> int -> unit = "caml_atomic_sub_stub"
-    external logand : (int t[@local_opt]) -> int -> unit = "caml_atomic_land_stub"
-    external logor : (int t[@local_opt]) -> int -> unit = "caml_atomic_lor_stub"
-    external logxor : (int t[@local_opt]) -> int -> unit = "caml_atomic_lxor_stub"
-    external fetch_and_add : (int t[@local_opt]) -> int -> int = "%atomic_fetch_add"
+  module Contended : sig
+    external get : 'a. 'a t -> 'a = "%atomic_load"
+    external set : 'a. 'a t -> 'a -> unit = "caml_atomic_set_stub"
+    external exchange : 'a. 'a t -> 'a -> 'a = "%atomic_exchange"
+    external compare_and_set : 'a. 'a t -> 'a -> 'a -> bool = "%atomic_cas"
+    external compare_exchange : 'a. 'a t -> 'a -> 'a -> 'a = "caml_atomic_compare_exchange_stub"
   end
 
   module Expert : sig
-    external fenceless_get : ('a t[@local_opt]) -> 'a = "%field0"
-    external fenceless_set : ('a Atomic.t[@local_opt]) -> 'a -> unit = "%setfield0"
+    external fenceless_get : 'a t -> 'a = "%field0"
+    external fenceless_set : 'a t -> 'a -> unit = "%setfield0"
+
+    module Contended : sig
+      external fenceless_get : 'a. 'a t -> 'a = "%field0"
+      external fenceless_set : 'a. 'a t -> 'a -> unit = "%setfield0"
+    end
   end
 end
 
@@ -238,15 +247,15 @@ module Modes : sig
   end
 
   module Portable : sig
-    type 'a t = { portable : 'a } [@@unboxed] [@@unsafe_allow_any_mode_crossing]
+    type 'a t = { portable : 'a } [@@unboxed]
   end
 
   module Contended : sig
-    type 'a t = { contended : 'a } [@@unboxed] [@@unsafe_allow_any_mode_crossing]
+    type 'a t = { contended : 'a } [@@unboxed]
   end
 
   module Portended : sig
-    type 'a t = { portended : 'a } [@@unboxed] [@@unsafe_allow_any_mode_crossing]
+    type 'a t = { portended : 'a } [@@unboxed]
   end
 
   module Aliased : sig
@@ -260,6 +269,10 @@ module Obj : sig
   external magic_unique : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
   external magic_many : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
   external magic_at_unique : ('a[@local_opt]) -> ('b[@local_opt]) = "%identity"
+
+  module Extension_constructor : sig
+    val of_val : 'a -> extension_constructor
+  end
 end
 
 module Printexc : sig
