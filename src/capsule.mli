@@ -254,8 +254,6 @@ val access_shared_local
   -> 'a @ contended local portable
   @@ portable
 
-(** Does *not* require runtime5. In runtime4, implemented as a no-op, so does not provide
-    mutual exclusion between systhreads. *)
 module Mutex : sig
   (** Private implementation type exposed to allow packing mutexes into [@@unboxed]
       records/variants. *)
@@ -284,10 +282,6 @@ module Mutex : sig
       the current thread until it's unlocked. If successful, provides [f] a password for
       the capsule ['k] associated with [m].
 
-      When running in a domain with multiple active threads, [m] only blocks the current
-      thread. However, that thread keeps the OCaml runtime lock, preventing other threads
-      from running OCaml code concurrently.
-
       If [f] raises an exception, the mutex is marked as poisoned and the exception is
       reraised. If that exception is [Encapsulated (id, exn)] or
       [Encapsulated_shared (id, exn)] (see below), it is unwrapped and the original [exn]
@@ -301,7 +295,6 @@ module Mutex : sig
   val destroy : 'k t -> 'k Key.t @ unique @@ portable
 end
 
-(** Requires runtime5. *)
 module Rwlock : sig
   (** Private implementation type exposed to allow packing rwlocks into [@@unboxed]
       records/variants. *)
@@ -335,10 +328,6 @@ module Rwlock : sig
       write or read locked, blocks the current thread until it's unlocked. If successful,
       provides [f] a password for the capsule ['k] associated with [rw].
 
-      When running in a domain with multiple active threads, [rw] only blocks the current
-      thread. However, that thread keeps the OCaml runtime lock, preventing other threads
-      from running OCaml code concurrently.
-
       If [f] raises an exception, the reader-writer lock is marked as poisoned and the
       exception is reraised. If that exception is [Encapsulated (id, exn)] or
       [Encapsulated_shared (id, exn)] (see below), it is unwrapped and the original [exn]
@@ -348,7 +337,7 @@ module Rwlock : sig
       already read-locked by the current thread, deadlocks. *)
   val with_write_lock
     :  'k t
-    -> f:('k Password.t @ local -> 'a) @ local once
+    -> f:('k Password.t @ local -> 'a) @ local once unyielding
     -> 'a
     @@ portable
 
@@ -356,10 +345,6 @@ module Rwlock : sig
       write-locked, blocks the current thread until it's unlocked. If [rw] is already
       read-locked, increases the reader count by one for the duration of [f]. If
       successful, provides [f] a password for the capsule ['k] associated with [rw].
-
-      When running in a domain with multiple active threads, [m] only blocks the current
-      thread. However, that thread keeps the OCaml runtime lock, preventing other threads
-      from running OCaml code concurrently.
 
       If [f] raises an exception, the reader-writer lock is marked as frozen. The reader
       count is decreased and the exception is reraised. If that exception is
@@ -370,7 +355,7 @@ module Rwlock : sig
       already read-locked by the current thread, nothing happens. *)
   val with_read_lock
     :  'k t
-    -> f:('k Password.Shared.t @ local -> 'a) @ local once
+    -> f:('k Password.Shared.t @ local -> 'a) @ local once unyielding
     -> 'a
     @@ portable
 
@@ -387,7 +372,6 @@ module Rwlock : sig
   val destroy : 'k t -> 'k Key.t @ unique @@ portable
 end
 
-(** Requires runtime5. *)
 module Condition : sig
   (** ['k t] is the type of a condition variable associated with the capsule ['k]. This
       condition may only be used with the matching ['k Mutex.t]. *)
@@ -397,7 +381,7 @@ module Condition : sig
       ['k Mutex.t] and with a certain property {i P} that is protected by the mutex. *)
   val create : unit -> 'k t @@ portable
 
-  (** [wait t ~mutex ~password] atomically unlocks the mutex [m] and suspends the current
+  (** [wait t ~mutex ~password] atomically unlocks the mutex [m] and blocks the current
       thread on the condition variable [t].
 
       This thread will be woken up when the condition variable [t] has been signaled via
@@ -440,6 +424,12 @@ module Data : sig
   (** [unwrap ~access t] returns the value of [t], which lives in the capsule ['k]. ['k]
       is always the current capsule. *)
   val unwrap : access:'k Access.t -> ('a, 'k) t -> 'a @@ portable
+
+  (** Like [wrap], but for unique values. *)
+  val wrap_unique : access:'k Access.t -> 'a @ unique -> ('a, 'k) t @ unique @@ portable
+
+  (** Like [unwrap], but for unique values. *)
+  val unwrap_unique : access:'k Access.t -> ('a, 'k) t @ unique -> 'a @ unique @@ portable
 
   (** [unwrap_shared ~access t] returns the shared value of [t], which lives in the
       capsule ['k]. ['k] is always the current capsule. Since ['a] may have been shared
@@ -726,6 +716,20 @@ module Data : sig
     (** [unwrap ~access t] returns the value of [t], which lives in the capsule ['k]. ['k]
         is always the current capsule. *)
     val unwrap : access:'k Access.t -> ('a, 'k) t @ local -> 'a @ local @@ portable
+
+    (** Like [wrap], but for unique values. *)
+    val wrap_unique
+      :  access:'k Access.t
+      -> 'a @ local unique
+      -> ('a, 'k) t @ local unique
+      @@ portable
+
+    (** Like [unwrap], but for unique values. *)
+    val unwrap_unique
+      :  access:'k Access.t
+      -> ('a, 'k) t @ local unique
+      -> 'a @ local unique
+      @@ portable
 
     (** [unwrap_shared ~access t] returns the shared value of [t], which lives in the
         capsule ['k]. ['k] is always the current capsule. Since ['a] may have been shared

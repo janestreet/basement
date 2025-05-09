@@ -1,9 +1,3 @@
-module Atomic = struct
-  (* Use the multidomain-safe version of [Atomic] functions. *)
-  include Atomic
-  include Stdlib_shim.Atomic.Safe
-end
-
 module Domain : sig @@ portable
   type id : value mod contended portable
 
@@ -30,9 +24,9 @@ type 'a inner =
   | Computed of 'a @@ contended portable
   | Error of string
 
-and 'a t = { global_ inner : 'a inner Atomic.t } [@@unboxed]
+and 'a t = { global_ inner : 'a inner Portable_atomic.t } [@@unboxed]
 
-let from_val value = { inner = Atomic.make (Computed value) }
+let from_val value = { inner = Portable_atomic.make (Computed value) }
 
 (* We manually enforce that the thunk stored inside an [Uncomputed] lazy is only called
    once, by only exposing an API that allows each function to be called once, and have
@@ -47,13 +41,13 @@ external magic_many_lazy_thunk
   = "%identity"
 
 let from_fun_fixed func =
-  { inner = Atomic.make (Uncomputed (magic_many_lazy_thunk func)) }
+  { inner = Portable_atomic.make (Uncomputed (magic_many_lazy_thunk func)) }
 ;;
 
 let from_fun func = from_fun_fixed (fun _ -> func ())
 
 let rec force ({ inner = atomic } as t) =
-  match Atomic.get atomic with
+  match Portable_atomic.get atomic with
   | Computed value -> value
   | Error msg -> raise (Force_raised msg)
   | Computing by_domain ->
@@ -68,7 +62,7 @@ let rec force ({ inner = atomic } as t) =
       force t)
   | Uncomputed f as uncomputed ->
     let computing = Computing (Domain.self ()) in
-    (match Atomic.compare_and_set atomic uncomputed computing with
+    (match Portable_atomic.compare_and_set atomic uncomputed computing with
      | false ->
        (* Someone else beat us to starting the thunk! This can only happen to us once, so
          we just try again without any calls to cpu_relax. *)
@@ -80,7 +74,7 @@ let rec force ({ inner = atomic } as t) =
        in
        (* We know we must have been the one to set it to [Computing], so we can just [set]
          here to set it to the result. If we had relaxed stores, we'd use one here. *)
-       Atomic.set atomic computed;
+       Portable_atomic.set atomic computed;
        (* We know that we set the value to either [Uncomputed] or [Error] - in either case
          we won't end up in [Uncomputed] again, so it's fine to just recurse here to
          either raise the error or return the result *)
@@ -96,13 +90,13 @@ let equal__local equal_a t1 t2 = equal_a (force t1) (force t2)
 let globalize _ ({ inner } @ local) = { inner }
 
 let peek { inner } =
-  match Atomic.get inner with
+  match Portable_atomic.get inner with
   | Computed x -> Some x
   | Computing _ | Uncomputed _ | Error _ -> None
 ;;
 
 let is_val { inner } =
-  match Atomic.get inner with
+  match Portable_atomic.get inner with
   | Computed _ -> true
   | Computing _ | Uncomputed _ | Error _ -> false
 ;;

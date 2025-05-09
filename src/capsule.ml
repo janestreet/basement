@@ -69,44 +69,44 @@ end = struct
     type 'k t = int
 
     let uninitialized = 0
-    let ctr = Stdlib_shim.Atomic.Safe.make (uninitialized + 1)
-    let[@inline] unsafe_mk () = Stdlib_shim.Atomic.Safe.fetch_and_add ctr 1
+    let ctr = Atomic.make (uninitialized + 1)
+    let[@inline] unsafe_mk () = Atomic.fetch_and_add ctr 1
 
     let[@inline] equality_witness t1 t2 =
       if Int.equal t1 t2 then Some (Obj.magic Type.Equal) else None
     ;;
   end
 
-  type 'k t = int Atomic.t
+  type 'k t = int Portable_atomic.t
 
-  let[@inline] unsafe_mk () = exclave_ Stdlib_shim.Atomic.Safe.make Id.uninitialized
+  let[@inline] unsafe_mk () = exclave_ Portable_atomic.make Id.uninitialized
 
   let[@inline] id (t : 'k t) =
     (* Safe since [Password.t] is only ever accessible by 1 fiber. *)
-    match Stdlib_shim.Atomic.Expert.fenceless_get t with
+    match Portable_atomic.Expert.fenceless_get t with
     | id when id = Id.uninitialized ->
       let set_id = Id.unsafe_mk () in
-      Stdlib_shim.Atomic.Expert.fenceless_set t set_id;
+      Portable_atomic.Expert.fenceless_set t set_id;
       set_id
     | set_id -> set_id
   ;;
 
   module Shared = struct
-    type 'k t = int Atomic.t
+    type 'k t = int Portable_atomic.t
 
     (* Multiple fibers can access the same [Password.Shared.t] concurrently.
        Therefore, we use atomic operations. *)
     let[@inline] id (t : 'k t) =
-      match Stdlib_shim.Atomic.Safe.get t with
+      match Portable_atomic.get t with
       | id when id = Id.uninitialized ->
         let new_id = Id.unsafe_mk () in
-        (match Stdlib_shim.Atomic.Safe.compare_exchange t Id.uninitialized new_id with
+        (match Portable_atomic.compare_exchange t Id.uninitialized new_id with
          | id when id = Id.uninitialized -> new_id
          | already_set_id -> already_set_id)
       | set_id -> set_id
     ;;
 
-    let[@inline] unsafe_mk () = Stdlib_shim.Atomic.Safe.make Id.uninitialized
+    let[@inline] unsafe_mk () = Portable_atomic.make Id.uninitialized
   end
 
   let[@inline] shared t = t
@@ -146,8 +146,22 @@ module Data = struct
     @@ portable
     = "%identity"
 
+  external unsafe_mk_unique
+    :  ('a[@local_opt]) @ unique
+    -> (('a, 'k) t[@local_opt]) @ unique
+    @@ portable
+    = "%identity"
+
+  external unsafe_get_unique
+    :  (('a, 'k) t[@local_opt]) @ unique
+    -> ('a[@local_opt]) @ unique
+    @@ portable
+    = "%identity"
+
   let[@inline] wrap ~access:_ t = unsafe_mk t
   let[@inline] unwrap ~access:_ t = unsafe_get t
+  let[@inline] wrap_unique ~access:_ t = unsafe_mk_unique t
+  let[@inline] unwrap_unique ~access:_ t = unsafe_get_unique t
   let[@inline] unwrap_shared ~access:_ t = unsafe_get t
   let[@inline] create f = unsafe_mk (f ())
 
@@ -333,6 +347,8 @@ module Data = struct
   module Local = struct
     let[@inline] wrap ~access:_ t = exclave_ unsafe_mk t
     let[@inline] unwrap ~access:_ t = exclave_ unsafe_get t
+    let[@inline] wrap_unique ~access:_ t = exclave_ unsafe_mk_unique t
+    let[@inline] unwrap_unique ~access:_ t = exclave_ unsafe_get_unique t
     let[@inline] unwrap_shared ~access:_ t = exclave_ unsafe_get t
     let[@inline] create f = exclave_ unsafe_mk (f ())
 

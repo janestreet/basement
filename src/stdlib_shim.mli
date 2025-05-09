@@ -14,63 +14,105 @@ external ignore_contended : 'a @ contended -> unit = "%ignore"
 
 external raise : exn -> 'a @ portable unique @@ portable = "%reraise"
 external raise_notrace : exn -> 'a @ portable unique @@ portable = "%raise_notrace"
+val failwith : string -> 'a @ portable unique @@ portable
 
 module Atomic : sig @@ portable
-  type 'a t := 'a Atomic.t
+  type 'a t := 'a Stdlib.Atomic.t
 
-  module Safe : sig @@ portable
-    external make : 'a @ contended portable -> ('a t[@local_opt]) = "%makemutable"
+  module Local : sig
+    external make : 'a -> ('a t[@local_opt]) @@ portable = "%makemutable"
 
     external make_contended
-      :  'a @ contended portable
-      -> 'a t
+      :  'a
+      -> ('a t[@local_opt])
+      @@ portable
       = "caml_atomic_make_contended"
 
-    external get : ('a t[@local_opt]) -> 'a @ contended portable = "%atomic_load"
-    external set : ('a t[@local_opt]) -> 'a @ contended portable -> unit = "%atomic_set"
-
-    external exchange
-      :  ('a t[@local_opt])
-      -> 'a @ contended portable
-      -> 'a @ contended portable
-      = "%atomic_exchange"
+    external get : 'a t @ local -> 'a @@ portable = "%atomic_load"
+    external set : 'a t @ local -> 'a -> unit @@ portable = "%atomic_set"
+    external exchange : 'a t @ local -> 'a -> 'a @@ portable = "%atomic_exchange"
 
     external compare_and_set
-      :  ('a t[@local_opt])
-      -> 'a @ contended portable
-      -> 'a @ contended portable
+      :  'a t @ local
+      -> 'a
+      -> 'a
       -> bool
+      @@ portable
       = "%atomic_cas"
 
     external compare_exchange
-      :  ('a t[@local_opt])
-      -> 'a @ contended portable
-      -> 'a @ contended portable
-      -> 'a @ contended portable
+      :  'a t @ local
+      -> 'a
+      -> 'a
+      -> 'a
+      @@ portable
       = "%atomic_compare_exchange"
 
-    external add : (int t[@local_opt]) -> int -> unit = "%atomic_add"
-    external sub : (int t[@local_opt]) -> int -> unit = "%atomic_sub"
-    external logand : (int t[@local_opt]) -> int -> unit = "%atomic_land"
-    external logor : (int t[@local_opt]) -> int -> unit = "%atomic_lor"
-    external logxor : (int t[@local_opt]) -> int -> unit = "%atomic_lxor"
-
     external fetch_and_add
-      :  (int t[@local_opt])
+      :  int t @ contended local
       -> int
       -> int
       @@ portable
       = "%atomic_fetch_add"
+
+    external add : int t @ contended local -> int -> unit @@ portable = "%atomic_add"
+    external sub : int t @ contended local -> int -> unit @@ portable = "%atomic_sub"
+    external logand : int t @ contended local -> int -> unit @@ portable = "%atomic_land"
+    external logor : int t @ contended local -> int -> unit @@ portable = "%atomic_lor"
+    external logxor : int t @ contended local -> int -> unit @@ portable = "%atomic_lxor"
+    val incr : int t @ contended local -> unit
+    val decr : int t @ contended local -> unit
+  end
+
+  module Contended : sig
+    external get
+      : ('a : value mod contended).
+      'a t @ contended local -> 'a
+      @@ portable
+      = "%atomic_load"
+
+    external set
+      : ('a : value mod portable).
+      'a t @ contended local -> 'a -> unit
+      @@ portable
+      = "%atomic_set"
+
+    external exchange
+      : ('a : value mod contended portable).
+      'a t @ contended local -> 'a -> 'a
+      @@ portable
+      = "%atomic_exchange"
+
+    external compare_and_set
+      : ('a : value mod portable).
+      'a t @ contended local -> 'a -> 'a -> bool
+      @@ portable
+      = "%atomic_cas"
+
+    external compare_exchange
+      : ('a : value mod contended portable).
+      'a t @ contended local -> 'a -> 'a -> 'a
+      @@ portable
+      = "%atomic_compare_exchange"
   end
 
   module Expert : sig
-    external fenceless_get : ('a t[@local_opt]) -> 'a @ contended portable = "%field0"
+    external fenceless_get : 'a t @ local -> 'a @@ portable = "%field0"
+    external fenceless_set : 'a t @ local -> 'a -> unit @@ portable = "%setfield0"
 
-    external fenceless_set
-      :  ('a Atomic.t[@local_opt])
-      -> 'a @ contended portable
-      -> unit
-      = "%setfield0"
+    module Contended : sig
+      external fenceless_get
+        : ('a : value mod contended).
+        'a t @ contended local -> 'a
+        @@ portable
+        = "%field0"
+
+      external fenceless_set
+        : ('a : value mod portable).
+        'a t @ contended local -> 'a -> unit
+        @@ portable
+        = "%setfield0"
+    end
   end
 end
 
@@ -294,18 +336,16 @@ module Modes : sig
   end
 
   module Portable : sig
-    type 'a t : value mod portable = { portable : 'a @@ portable }
-    [@@unboxed] [@@unsafe_allow_any_mode_crossing]
+    type 'a t : value mod portable = { portable : 'a @@ portable } [@@unboxed]
   end
 
   module Contended : sig
-    type 'a t : value mod contended = { contended : 'a @@ contended }
-    [@@unboxed] [@@unsafe_allow_any_mode_crossing]
+    type 'a t : value mod contended = { contended : 'a @@ contended } [@@unboxed]
   end
 
   module Portended : sig
     type 'a t : value mod contended portable = { portended : 'a @@ contended portable }
-    [@@unboxed] [@@unsafe_allow_any_mode_crossing]
+    [@@unboxed]
   end
 
   module Aliased : sig
@@ -328,6 +368,10 @@ module Obj : sig @@ portable
     :  ('a[@local_opt]) @ unique
     -> ('b[@local_opt]) @ unique
     = "%identity"
+
+  module Extension_constructor : sig
+    val of_val : 'a @ contended -> extension_constructor
+  end
 end
 
 module Printexc : sig @@ portable

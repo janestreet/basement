@@ -7,25 +7,24 @@
 #include "caml/memory.h"
 #include "caml/version.h"
 #include "caml/sys.h"
+#include "caml/signals.h"
 
-// We can't use [#ifdef CAML_RUNTIME_5] here, because upstream doesn't define it. This
-// seems to be the only way to accept js and upstream rt5 and not js or upstream rt4
-#if (OCAML_VERSION_MAJOR >= 5) && !(defined JANE_STREET_HAS_NO_DOMAINS)
-
-#include "sync_rwlock.h"
+#include "capsule_mutex.h"
+#include "capsule_condition.h"
+#include "capsule_rwlock.h"
 
 // Copy-pasted from [runtime/sync_posix.h] which is not included in the distribution.
-Caml_inline void sync_check_error(int retcode, char *msg) {
+Caml_inline void capsule_check_error(int rc, char *msg) {
   char *err;
   char buf[1024];
   int errlen, msglen;
   value str;
 
-  if (retcode == 0)
+  if (rc == 0)
     return;
-  if (retcode == ENOMEM)
+  if (rc == ENOMEM)
     caml_raise_out_of_memory();
-  err = caml_strerror(retcode, buf, sizeof(buf));
+  err = caml_strerror(rc, buf, sizeof(buf));
   msglen = strlen(msg);
   errlen = strlen(err);
   str = caml_alloc_string(msglen + 2 + errlen);
@@ -35,22 +34,109 @@ Caml_inline void sync_check_error(int retcode, char *msg) {
   caml_raise_sys_error(str);
 }
 
-CAMLextern value caml_ml_mutex_new(value unit);
-CAMLextern value caml_ml_mutex_lock(value wrapper);
-CAMLextern value caml_ml_mutex_unlock(value wrapper);
-CAMLextern value caml_ml_condition_new(value unit);
-CAMLextern value caml_ml_condition_wait(value wcond, value wmut);
-CAMLextern value caml_ml_condition_signal(value wrapper);
-CAMLextern value caml_ml_condition_broadcast(value wrapper);
+/* Mutex ops, ported from the runtime implementations */
+static void caml_capsule_mutex_finalize(value wrapper) {
+  capsule_mutex_destroy(Mutex_val(wrapper));
+}
 
-/* Rwlock ops */
+static int caml_capsule_mutex_compare(value wrapper1, value wrapper2) {
+  capsule_mutex rwl1 = Mutex_val(wrapper1);
+  capsule_mutex rwl2 = Mutex_val(wrapper2);
+  return rwl1 == rwl2 ? 0 : rwl1 < rwl2 ? -1 : 1;
+}
+
+static intnat caml_capsule_mutex_hash(value wrapper) {
+  return (intnat)Mutex_val(wrapper);
+}
+
+static struct custom_operations caml_capsule_mutex_ops = {
+    "_capsule_mutex",           caml_capsule_mutex_finalize, caml_capsule_mutex_compare,
+    caml_capsule_mutex_hash,    custom_serialize_default,    custom_deserialize_default,
+    custom_compare_ext_default, custom_fixed_length_default};
+
+CAMLprim value caml_capsule_mutex_new(__attribute__((unused)) value unit) {
+  capsule_mutex mut = NULL;
+  capsule_check_error(capsule_mutex_create(&mut), "Mutex.create");
+  value wrapper =
+      caml_alloc_custom(&caml_capsule_mutex_ops, sizeof(capsule_mutex *), 0, 1);
+  Mutex_val(wrapper) = mut;
+  return wrapper;
+}
+
+CAMLprim value caml_capsule_mutex_lock(value wrapper) {
+  CAMLparam1(wrapper);
+  capsule_mutex mut = Mutex_val(wrapper);
+  capsule_check_error(capsule_mutex_lock(mut), "Mutex.lock");
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value caml_capsule_mutex_unlock(value wrapper) {
+  CAMLparam1(wrapper);
+  capsule_mutex mut = Mutex_val(wrapper);
+  capsule_check_error(capsule_mutex_unlock(mut), "Mutex.unlock");
+  CAMLreturn(Val_unit);
+}
+
+/* Condition ops, ported from the runtime implementations */
+static void caml_capsule_condition_finalize(value wrapper) {
+  capsule_condition_destroy(Condition_val(wrapper));
+}
+
+static int caml_capsule_condition_compare(value wrapper1, value wrapper2) {
+  capsule_condition rwl1 = Condition_val(wrapper1);
+  capsule_condition rwl2 = Condition_val(wrapper2);
+  return rwl1 == rwl2 ? 0 : rwl1 < rwl2 ? -1 : 1;
+}
+
+static intnat caml_capsule_condition_hash(value wrapper) {
+  return (intnat)(Condition_val(wrapper));
+}
+
+static struct custom_operations caml_capsule_condition_ops = {
+    "_capsule_condition",           caml_capsule_condition_finalize,
+    caml_capsule_condition_compare, caml_capsule_condition_hash,
+    custom_serialize_default,       custom_deserialize_default,
+    custom_compare_ext_default,     custom_fixed_length_default};
+
+CAMLprim value caml_capsule_condition_new(__attribute__((unused)) value unit) {
+  capsule_condition cond = NULL;
+  capsule_check_error(capsule_condition_create(&cond), "Condition.create");
+  value wrapper =
+      caml_alloc_custom(&caml_capsule_condition_ops, sizeof(capsule_condition *), 0, 1);
+  Condition_val(wrapper) = cond;
+  return wrapper;
+}
+
+CAMLprim value caml_capsule_condition_signal(value wrapper) {
+  CAMLparam1(wrapper);
+  capsule_condition cond = Condition_val(wrapper);
+  capsule_check_error(capsule_condition_signal(cond), "Condition.signal");
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value caml_capsule_condition_broadcast(value wrapper) {
+  CAMLparam1(wrapper);
+  capsule_condition mut = Condition_val(wrapper);
+  capsule_check_error(capsule_condition_broadcast(mut), "Condition.broadcast");
+  CAMLreturn(Val_unit);
+}
+
+CAMLprim value caml_capsule_condition_wait(value condition_wrapper, value mutex_wrapper) {
+  CAMLparam2(condition_wrapper, mutex_wrapper);
+  capsule_condition cond = Condition_val(condition_wrapper);
+  capsule_mutex mut = Mutex_val(mutex_wrapper);
+  capsule_check_error(capsule_condition_wait(cond, mut), "Condition.wait");
+  CAMLreturn(Val_unit);
+}
+
+/* Rwlock ops, ported from the runtime implementations */
 static void caml_capsule_rwlock_finalize(value wrapper) {
-  sync_rwlock_destroy(Rwlock_val(wrapper));
+  capsule_rwlock_destroy(Rwlock_val(wrapper));
 }
 
 static int caml_capsule_rwlock_compare(value wrapper1, value wrapper2) {
-  sync_rwlock rwl1 = Rwlock_val(wrapper1);
-  sync_rwlock rwl2 = Rwlock_val(wrapper2);
+  capsule_rwlock rwl1 = Rwlock_val(wrapper1);
+  capsule_rwlock rwl2 = Rwlock_val(wrapper2);
   return rwl1 == rwl2 ? 0 : rwl1 < rwl2 ? -1 : 1;
 }
 
@@ -58,151 +144,37 @@ static intnat caml_capsule_rwlock_hash(value wrapper) {
   return (intnat)(Rwlock_val(wrapper));
 }
 
-static struct custom_operations caml_capsule_rwlock_ops = {"_rwlock",
-                                                           caml_capsule_rwlock_finalize,
-                                                           caml_capsule_rwlock_compare,
-                                                           caml_capsule_rwlock_hash,
-                                                           custom_serialize_default,
-                                                           custom_deserialize_default,
-                                                           custom_compare_ext_default,
-                                                           custom_fixed_length_default};
+static struct custom_operations caml_capsule_rwlock_ops = {
+    "_capsule_rwlock",          caml_capsule_rwlock_finalize, caml_capsule_rwlock_compare,
+    caml_capsule_rwlock_hash,   custom_serialize_default,     custom_deserialize_default,
+    custom_compare_ext_default, custom_fixed_length_default};
 
-CAMLprim value caml_capsule_rwlock_new(value unit) {
-  (void)unit;
-  sync_rwlock rwl = NULL;
-  value wrapper;
-  sync_check_error(sync_rwlock_create(&rwl), "Rwlock.create");
-  wrapper = caml_alloc_custom(&caml_capsule_rwlock_ops, sizeof(pthread_rwlock_t *), 0, 1);
+CAMLprim value caml_capsule_rwlock_new(__attribute__((unused)) value unit) {
+  capsule_rwlock rwl = NULL;
+  capsule_check_error(capsule_rwlock_create(&rwl), "Rwlock.create");
+  value wrapper =
+      caml_alloc_custom(&caml_capsule_rwlock_ops, sizeof(capsule_rwlock *), 0, 1);
   Rwlock_val(wrapper) = rwl;
   return wrapper;
 }
 
 CAMLprim value caml_capsule_rwlock_rdlock(value wrapper) {
   CAMLparam1(wrapper);
-  sync_retcode retcode;
-  sync_rwlock rwl = Rwlock_val(wrapper);
-  if (sync_rwlock_tryrdlock(rwl) != RWLOCK_SUCCESS) {
-    caml_enter_blocking_section();
-    retcode = sync_rwlock_rdlock(rwl);
-    caml_leave_blocking_section();
-    sync_check_error(retcode, "Rwlock.rdlock");
-  }
+  capsule_rwlock rwl = Rwlock_val(wrapper);
+  capsule_check_error(capsule_rwlock_rdlock(rwl), "Rwlock.rdlock");
   CAMLreturn(Val_unit);
 }
 
 CAMLprim value caml_capsule_rwlock_wrlock(value wrapper) {
   CAMLparam1(wrapper);
-  sync_retcode retcode;
-  sync_rwlock rwl = Rwlock_val(wrapper);
-  if (sync_rwlock_trywrlock(rwl) != RWLOCK_SUCCESS) {
-    caml_enter_blocking_section();
-    retcode = sync_rwlock_wrlock(rwl);
-    caml_leave_blocking_section();
-    sync_check_error(retcode, "Rwlock.wrlock");
-  }
+  capsule_rwlock rwl = Rwlock_val(wrapper);
+  capsule_check_error(capsule_rwlock_wrlock(rwl), "Rwlock.wrlock");
   CAMLreturn(Val_unit);
 }
 
 CAMLprim value caml_capsule_rwlock_unlock(value wrapper) {
-  sync_rwlock rwl = Rwlock_val(wrapper);
-  sync_retcode retcode;
-  retcode = sync_rwlock_unlock(rwl);
-  sync_check_error(retcode, "Rwlock.unlock");
-  return Val_unit;
-}
-
-CAMLprim value caml_capsule_mutex_new(value unit) { return caml_ml_mutex_new(unit); }
-
-CAMLprim value caml_capsule_mutex_lock(value wrapper) {
-  return caml_ml_mutex_lock(wrapper);
-}
-
-CAMLprim value caml_capsule_mutex_unlock(value wrapper) {
-  return caml_ml_mutex_unlock(wrapper);
-}
-
-CAMLprim value caml_capsule_condition_new(value unit) {
-  return caml_ml_condition_new(unit);
-}
-
-CAMLprim value caml_capsule_condition_wait(value wcond, value wmut) {
-  return caml_ml_condition_wait(wcond, wmut);
-}
-
-CAMLprim value caml_capsule_condition_signal(value wrapper) {
-  return caml_ml_condition_signal(wrapper);
-}
-
-CAMLprim value caml_capsule_condition_broadcast(value wrapper) {
-  return caml_ml_condition_broadcast(wrapper);
-}
-
-#else
-
-CAMLprim value caml_capsule_rwlock_new(value unit) {
-  (void)unit;
-  caml_failwith("Must use runtime5 to use Rwlock");
-}
-
-CAMLprim value caml_capsule_rwlock_rdlock(value wrapper) {
-  (void)wrapper;
-  caml_failwith("Must use runtime5 to use Rwlock");
-}
-
-CAMLprim value caml_capsule_rwlock_wrlock(value wrapper) {
-  (void)wrapper;
-  caml_failwith("Must use runtime5 to use Rwlock");
-}
-
-CAMLprim value caml_capsule_rwlock_unlock(value wrapper) {
-  (void)wrapper;
-  caml_failwith("Must use runtime5 to use Rwlock");
-}
-
-CAMLprim value caml_capsule_mutex_new(value unit) {
-  CAMLparam1(unit);
-  value res = caml_alloc_small(1, 0);
-  Field(res, 0) = Val_false;
-  CAMLreturn(res);
-}
-
-CAMLprim value caml_capsule_mutex_lock(value wrapper) {
   CAMLparam1(wrapper);
-  if (Field(wrapper, 0) == Val_true) {
-    caml_raise_sys_error(caml_copy_string("Attempted to recursively lock mutex."));
-  }
-  Field(wrapper, 0) = Val_true;
+  capsule_rwlock rwl = Rwlock_val(wrapper);
+  capsule_check_error(capsule_rwlock_unlock(rwl), "Rwlock.unlock");
   CAMLreturn(Val_unit);
 }
-
-CAMLprim value caml_capsule_mutex_unlock(value wrapper) {
-  CAMLparam1(wrapper);
-  if (Field(wrapper, 0) == Val_false) {
-    caml_raise_sys_error(caml_copy_string("Attempted to recursively unlock mutex."));
-  }
-  Field(wrapper, 0) = Val_false;
-  CAMLreturn(Val_unit);
-}
-
-CAMLprim value caml_capsule_condition_new(value unit) {
-  (void)unit;
-  caml_failwith("Must use runtime5 to use Condition");
-}
-
-CAMLprim value caml_capsule_condition_wait(value wcond, value wmut) {
-  (void)wcond;
-  (void)wmut;
-  caml_failwith("Must use runtime5 to use Condition");
-}
-
-CAMLprim value caml_capsule_condition_signal(value wrapper) {
-  (void)wrapper;
-  caml_failwith("Must use runtime5 to use Condition");
-}
-
-CAMLprim value caml_capsule_condition_broadcast(value wrapper) {
-  (void)wrapper;
-  caml_failwith("Must use runtime5 to use Condition");
-}
-
-#endif

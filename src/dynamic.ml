@@ -3,13 +3,6 @@ module Domain = struct
   include Stdlib_shim.Domain.Safe
 end
 
-module Atomic = struct
-  include Atomic
-  include Stdlib_shim.Atomic.Safe
-end
-
-module Modes = Stdlib_shim.Modes
-
 (* NOTE: This module contains a "stub" implementation of dynamically scoped variables,
    intended as a safe stop-gap until we add support for native dynamic scoping in the
    runtime. It is currently unsafe to use this module in the presence of fibers. *)
@@ -26,12 +19,12 @@ module Cell : sig @@ portable
   val get : ('a : value mod contended). ('a, [> `read ]) t -> 'a @ portable
   val set : ('a : value mod contended). ('a, [> `write ]) t -> 'a @ portable -> unit
 end = struct
-  type ('a, +_) t = 'a Modes.Portable.t Atomic.t
+  type ('a, +_) t = 'a Portable_atomic.t
 
-  let[@inline] make x = Atomic.make { Modes.Portable.portable = x }
+  let[@inline] make x = Portable_atomic.make x
   let[@inline] make_readonly x = make x
-  let[@inline] get t = (Atomic.get t).Modes.Portable.portable
-  let[@inline] set t x = Atomic.set t { Modes.Portable.portable = x }
+  let[@inline] get t = Portable_atomic.get t
+  let[@inline] set t x = Portable_atomic.set t x
 end
 
 (** A ['a t] represents a dynamically scoped variable.

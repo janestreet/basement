@@ -26,7 +26,7 @@ let with_guarded (Mk (rw, p)) (f : ('a, 'b) func) =
 
 exception E
 
-let%expect_test ("shared data API" [@tags "runtime5-only", "no-js", "no-wasm"]) =
+let%expect_test "shared data API" =
   (* Create a reference in Data.Shared *)
   let ptr =
     let (Capsule.Key.P brand) = Capsule.create () in
