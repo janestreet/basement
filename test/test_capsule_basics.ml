@@ -23,9 +23,10 @@ module Cell = struct
 
   let read (type a) (t : a t) : a =
     let (Mk (m, p)) = t in
-    Capsule.Mutex.with_lock m ~f:(fun password ->
-      let read' : a myref -> a = fun r -> r.v in
-      Capsule.Data.extract p ~password ~f:read')
+    (Capsule.Mutex.with_lock m ~f:(fun password ->
+       let read' : a myref -> a aliased = fun r -> { aliased = r.v } in
+       Capsule.Data.extract p ~password ~f:read'))
+      .aliased
   ;;
 
   let write (type a) (t : a t) (x : a) =

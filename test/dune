@@ -1,6 +1,6 @@
 (library
  (name basement_test)
  (libraries basement expect_test_helpers_core.expect_test_helpers_base
-   portable_test_helpers)
+   portable.test_helpers)
  (preprocess
   (pps ppx_jane)))

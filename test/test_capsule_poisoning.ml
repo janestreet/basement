@@ -72,10 +72,14 @@ let%expect_test ("Waiting on a condition raises [Sys_error] in single-threaded p
   =
   let (P m) = m in
   let c = Capsule.Condition.create () in
-  Capsule.Mutex.with_lock m ~f:(fun password ->
-    require_sys_error (fun () ->
-      (Capsule.Condition.wait [@alert "-unsafe"]) c ~password ~mutex:m)
-    [@nontail])
+  require_sys_error (fun () ->
+    Capsule.Mutex.with_key m ~f:(fun key -> (), Capsule.Condition.wait c ~mutex:m key))
+;;
+
+(* Reset *)
+let m =
+  let (P k) = Capsule.create () in
+  Capsule.Mutex.P (Capsule.Mutex.create k)
 ;;
 
 let%expect_test "Exceptions propagate through [with_lock]" =

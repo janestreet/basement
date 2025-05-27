@@ -1,4 +1,5 @@
 module Capsule = Capsule
+module Compare_failed_or_set_here = Compare_failed_or_set_here
 module Dynamic = Dynamic
 module Or_null_shim = Or_null_shim
 module Portability_hacks = Portability_hacks

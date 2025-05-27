@@ -1,8 +1,4 @@
-module Global = struct
-  type 'a t = { global : 'a } [@@unboxed]
-end
-
-open Global
+type 'a global = { global : 'a } [@@unboxed]
 
 module Access : sig
   (* TODO: this should have layout [void], but
@@ -114,12 +110,11 @@ end = struct
 end
 
 (* Like [Stdlib.raise], but [portable], and the value it never returns is also [portable unique] *)
-external reraise : exn -> 'a = "%reraise"
+external reraise : 'a. exn -> 'a = "%reraise"
 
 external raise_with_backtrace
-  :  exn
-  -> Printexc.raw_backtrace
-  -> 'a
+  : 'a.
+  exn -> Printexc.raw_backtrace -> 'a
   = "%raise_with_backtrace"
 
 external get_raw_backtrace
@@ -177,6 +172,7 @@ module Data = struct
 
   let inject = unsafe_mk
   let project = unsafe_get
+  let[@inline] project_shared ~key:_ t = unsafe_get t
 
   let[@inline] bind ~password ~f t =
     let v = unsafe_get t in
@@ -358,6 +354,7 @@ module Data = struct
 
     let[@inline] inject v = unsafe_mk v
     let[@inline] project t = unsafe_get t
+    let[@inline] project_shared ~key:_ t = unsafe_get t
 
     let[@inline] bind ~password ~f t =
       let v = unsafe_get t in
@@ -545,7 +542,8 @@ module Mutex = struct
 
   exception Poisoned
 
-  let[@inline never] poison_and_reraise : type k. k t -> pw:k Password.t -> exn:exn -> 'a =
+  let[@inline never] poison_and_reraise : type a k. k t -> pw:k Password.t -> exn:exn -> a
+    =
     fun t ~pw ~exn ->
     t.poisoned <- true;
     M.unlock t.mutex;
@@ -561,7 +559,7 @@ module Mutex = struct
     | _ -> reraise exn
   ;;
 
-  let[@inline] with_lock : type k. k t -> f:(k Password.t -> 'a) -> 'a =
+  let[@inline] with_lock : type a k. k t -> f:(k Password.t -> a) -> a =
     fun t ~f ->
     M.lock t.mutex;
     match t.poisoned with
@@ -575,6 +573,25 @@ module Mutex = struct
          M.unlock t.mutex;
          x
        | exception exn -> poison_and_reraise t ~pw ~exn [@nontail])
+  ;;
+
+  let[@inline] with_key : type a k. k t -> f:(k Key.t -> a * k Key.t) -> a =
+    fun t ~f ->
+    M.lock t.mutex;
+    match t.poisoned with
+    | true ->
+      M.unlock t.mutex;
+      reraise Poisoned
+    | false ->
+      let key : k Key.t = Key.unsafe_mk () in
+      (match f key with
+       | x, _key ->
+         M.unlock t.mutex;
+         x
+       | exception exn ->
+         t.poisoned <- true;
+         M.unlock t.mutex;
+         reraise exn)
   ;;
 
   let[@inline] destroy t =
@@ -724,8 +741,17 @@ module Condition = struct
   external signal : 'k t -> unit = "caml_capsule_condition_signal"
   external broadcast : 'k t -> unit = "caml_capsule_condition_broadcast"
 
-  let[@inline] wait t ~(mutex : 'k Mutex.t) ~password:_ =
-    (* [mutex] is locked, so we know it is not poisoned. *)
-    wait t mutex.mutex
+  let[@inline] wait t ~(mutex : 'k Mutex.t) key =
+    (* Check that the mutex is not poisoned. It's safe to do so without locking:
+       either we hold the [key] because it's locked, or because it's poisoned. *)
+    match mutex.poisoned with
+    | true -> raise Mutex.Poisoned
+    | false ->
+      wait t mutex.mutex;
+      (* Check that the mutex wasn't poisoned again while we were waiting.
+         If it was, we can't return the key. *)
+      (match mutex.poisoned with
+       | true -> raise Mutex.Poisoned
+       | false -> key)
   ;;
 end

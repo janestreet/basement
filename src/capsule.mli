@@ -237,7 +237,17 @@ module Mutex : sig
       is reraised.
 
       If [m] is already locked by the current thread, raises [Sys_error]. *)
-  val with_lock : 'k t -> f:('k Password.t -> 'a) -> 'a
+  val with_lock : 'a 'k. 'k t -> f:('k Password.t -> 'a) -> 'a
+
+  (** [with_key m ~f] tries to acquire the mutex [m]. If [m] is already locked, blocks the
+      current thread until it's unlocked. If successful, provides [f] the key for the
+      capsule ['k] associated with [m].
+
+      If [f] raises an exception, the mutex is marked as poisoned and the exception is
+      reraised.
+
+      If [m] is already locked by the current thread, raises [Sys_error]. *)
+  val with_key : 'a 'k. 'k t -> f:('k Key.t -> 'a * 'k Key.t) -> 'a
 
   (** [destroy m] acquires the mutex [m] and returns the key representing ownership of
       ['k]. The mutex is marked as poisoned. *)
@@ -322,17 +332,19 @@ module Condition : sig
       ['k Mutex.t] and with a certain property {i P} that is protected by the mutex. *)
   val create : unit -> 'k t
 
-  (** [wait t ~mutex ~password] atomically unlocks the mutex [m] and blocks the current
-      thread on the condition variable [t].
+  (** [wait t ~mutex key] atomically unlocks the [mutex] and blocks the current thread on
+      the condition variable [t]. To ensure exception safety, it takes hold of the
+      ['k Key.t] associated with the mutex, provided by [Mutex.with_key].
 
       This thread will be woken up when the condition variable [t] has been signaled via
       {!signal} or {!broadcast}. [mutex] is locked again before [wait] returns.
 
       However, this thread can also be woken up for no reason. One cannot assume that the
       property {i P} associated with the condition variable [c] holds when [wait] returns;
-      one must explicitly test whether {i P} holds after calling [wait]. *)
-  val wait : 'k t -> mutex:'k Mutex.t -> password:'k Password.t -> unit
-  [@@alert unsafe "[wait] is broken with poisoned mutexes."]
+      one must explicitly test whether {i P} holds after calling [wait].
+
+      If called on an already poisoned [mutex], raises [Mutex.Poisoned]. *)
+  val wait : 'k t -> mutex:'k Mutex.t -> 'k Key.t -> 'k Key.t
 
   (** [signal t] wakes up one of the threads waiting on the condition variable [t], if
       there is one. If there is none, this call has no effect. It is recommended to call
@@ -403,6 +415,10 @@ module Data : sig
       [project] does not require permission to access ['k]. This is safe because all
       accesses to the value happen only after it's marked [contended]. *)
   val project : 'a 'k. ('a, 'k) t -> 'a
+
+  (** [project_shared ~key t] is like [project t], but since [t] is a capsule associated
+      with a [key @ aliased global], the contents can be returned at [shared]. *)
+  val project_shared : 'a 'k. key:'k Key.t -> ('a, 'k) t -> 'a
 
   (** [bind ~password ~f t] is [project (map ~password ~f t)]. *)
   val bind : password:'k Password.t -> f:('a -> ('b, 'j) t) -> ('a, 'k) t -> ('b, 'j) t
@@ -606,6 +622,10 @@ module Data : sig
         [extract], we don't need exclusive access to ['k]: all accesses to the value
         happen only after it's marked [contended]. *)
     val project : 'a 'k. ('a, 'k) t -> 'a
+
+    (** [project_shared ~key t] is like [project t], but since [t] is a capsule associated
+        with a [key @ aliased global], the contents can be returned at [shared]. *)
+    val project_shared : 'a 'k. key:'k Key.t -> ('a, 'k) t -> 'a
 
     (** [bind ~password ~f t] is [project (map ~password ~f t)]. *)
     val bind : password:'k Password.t -> f:('a -> ('b, 'j) t) -> ('a, 'k) t -> ('b, 'j) t

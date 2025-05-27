@@ -57,6 +57,8 @@ module Callback = struct
 end
 
 module Domain = struct
+  let cpu_relax = if runtime5 () then Domain.cpu_relax else fun () -> ()
+
   module Safe = struct
     module DLS = struct
       module Access = struct
@@ -162,6 +164,10 @@ module Modes = struct
 
   module Aliased = struct
     type 'a t = { aliased : 'a } [@@unboxed]
+  end
+
+  module Many = struct
+    type 'a t = { many : 'a } [@@unboxed]
   end
 end
 

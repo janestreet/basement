@@ -73,6 +73,10 @@ end
 module Domain : sig
   type 'a t := 'a Domain.t
 
+  (** If busy-waiting, calling cpu_relax () between iterations will improve performance on
+      some CPU architectures. On runtime4, this is a noop. *)
+  val cpu_relax : unit -> unit
+
   module Safe : sig
     module DLS : sig
       module Access : sig
@@ -260,6 +264,10 @@ module Modes : sig
 
   module Aliased : sig
     type 'a t = { aliased : 'a } [@@unboxed]
+  end
+
+  module Many : sig
+    type 'a t = { many : 'a } [@@unboxed]
   end
 end
 
