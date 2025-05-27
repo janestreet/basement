@@ -5,15 +5,15 @@ external ( = ) : 'a @ local shared -> 'a @ local shared -> bool @@ portable = "%
 external raise : exn -> 'a @ portable unique @@ portable = "%reraise"
 
 type nothing = |
-type 'a aliased = Aliased of 'a @@ aliased [@@unboxed]
+type 'a aliased_many = AliasedMany of 'a @@ aliased many [@@unboxed]
 
 let%expect_test "[Capsule.Key] basics" =
   (* [Capsule.create] creates a new capsule with an unique key. *)
   let packed : Capsule.Key.packed @@ unique = Capsule.create () in
   let (P k) = packed in
-  let Aliased x, k =
+  let AliasedMany x, k =
     Capsule.Key.access k ~f:(fun access ->
-      Aliased (Capsule.Data.wrap ~access (ref "Hello world!")))
+      AliasedMany (Capsule.Data.wrap ~access (ref "Hello world!")))
   in
   let (), _k =
     Capsule.Key.with_password k ~f:(fun password ->
@@ -24,9 +24,9 @@ let%expect_test "[Capsule.Key] basics" =
 
 let%expect_test "[Key]s and [Mutex]es" =
   let (P k) = Capsule.create () in
-  let Aliased x, k =
+  let AliasedMany x, k =
     Capsule.Key.access k ~f:(fun access ->
-      Aliased (Capsule.Data.wrap ~access (ref "My value")))
+      AliasedMany (Capsule.Data.wrap ~access (ref "My value")))
   in
   (* [Capsule.Mutex.create] takes the key. *)
   let m = Capsule.Mutex.create k in
@@ -168,4 +168,41 @@ let%expect_test "Encapsulated exceptions from inside [with_password_shared_local
   with
   | (_ : nothing) -> .
   | exception F n -> [%test_result: int] n ~expect:2
+;;
+
+let%expect_test "[Mutex.with_key] provides direct access to the key" =
+  let (P k) = Capsule.create () in
+  let AliasedMany x, k =
+    Capsule.Key.access k ~f:(fun access ->
+      AliasedMany (Capsule.Data.wrap ~access (ref "Initial value")))
+  in
+  let m = Capsule.Mutex.create k in
+  let result =
+    Capsule.Mutex.with_key m ~f:(fun key ->
+      let (), key =
+        Capsule.Key.with_password key ~f:(fun password ->
+          Capsule.Data.iter x ~password ~f:(fun s -> s := "Modified with key"))
+      in
+      "Success", key)
+  in
+  [%test_result: string] result ~expect:"Success";
+  let k = Capsule.Mutex.destroy m in
+  let access = Capsule.Key.destroy k in
+  [%test_result: string] !(Capsule.Data.unwrap ~access x) ~expect:"Modified with key"
+;;
+
+let%expect_test "Exceptions in [Mutex.with_key] are re-raised and poison the mutex" =
+  let exception Key_exception of string in
+  let (P k) = Capsule.create () in
+  let m = Capsule.Mutex.create k in
+  match
+    Capsule.Mutex.with_key m ~f:(fun _key ->
+      raise (Key_exception "Exception from with_key!"))
+  with
+  | _result -> assert false
+  | exception Key_exception s ->
+    [%test_result: string] s ~expect:"Exception from with_key!";
+    (match Capsule.Mutex.with_key m ~f:(fun k -> "No exception", k) with
+     | _result -> assert false
+     | exception Capsule.Mutex.Poisoned -> ())
 ;;

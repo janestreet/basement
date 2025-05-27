@@ -1,8 +1,5 @@
-module Global = struct
-  type 'a t = { global : 'a @@ aliased global } [@@unboxed]
-end
-
-open Global
+type ('a : value_or_null) global : value_or_null = { global : 'a @@ aliased global }
+[@@unboxed]
 
 module Access : sig
   (* TODO: this should have layout [void], but
@@ -63,7 +60,7 @@ module Password : sig
   end
 
   val shared : 'k t @ local -> 'k Shared.t @ local @@ portable
-  val with_current : 'k Access.t -> ('k t @ local -> 'a) @ local -> 'a @@ portable
+  val with_current : 'k Access.t -> ('k t @ local -> 'a) @ local once -> 'a @@ portable
 end = struct
   module Id = struct
     type 'k t = int
@@ -114,12 +111,15 @@ end = struct
 end
 
 (* Like [Stdlib.raise], but [portable], and the value it never returns is also [portable unique] *)
-external reraise : exn -> 'a @ portable unique @@ portable = "%reraise"
+external reraise
+  : ('a : value_or_null).
+  exn -> 'a @ portable unique
+  @@ portable
+  = "%reraise"
 
 external raise_with_backtrace
-  :  exn
-  -> Printexc.raw_backtrace
-  -> 'a @ portable unique
+  : ('a : value_or_null).
+  exn -> Printexc.raw_backtrace -> 'a @ portable unique
   @@ portable
   = "%raise_with_backtrace"
 
@@ -198,6 +198,7 @@ module Data = struct
 
   let inject = unsafe_mk
   let project = unsafe_get
+  let[@inline] project_shared ~key:_ t = unsafe_get t
 
   let[@inline] bind ~password ~f t =
     let v = unsafe_get t in
@@ -379,6 +380,7 @@ module Data = struct
 
     let[@inline] inject v = exclave_ unsafe_mk v
     let[@inline] project t = exclave_ unsafe_get t
+    let[@inline] project_shared ~key:_ t = exclave_ unsafe_get t
 
     let[@inline] bind ~password ~f t = exclave_
       let v = unsafe_get t in
@@ -420,7 +422,7 @@ let () =
 ;;
 
 module Key : sig
-  type 'k t : value mod contended external_ portable
+  type 'k t : value mod contended external_ many portable
   type packed = P : 'k t -> packed [@@unboxed]
 
   val unsafe_mk : unit -> 'k t @ unique @@ portable
@@ -451,26 +453,28 @@ module Key : sig
 
   val access
     :  'k t @ unique
-    -> f:('k Access.t -> 'a @ contended portable unique) @ local once portable
-    -> 'a * 'k t @ contended portable unique
+    -> f:('k Access.t -> 'a @ contended once portable unique) @ local once portable
+    -> 'a * 'k t @ contended once portable unique
     @@ portable
 
   val access_local
     :  'k t @ unique
-    -> f:('k Access.t -> 'a @ contended local portable unique) @ local once portable
-    -> 'a * 'k t @ contended local portable unique
+    -> f:('k Access.t -> 'a @ contended local once portable unique) @ local once portable
+    -> 'a * 'k t @ contended local once portable unique
     @@ portable
 
   val access_shared
     :  'k t
-    -> f:('k Access.t @ shared -> 'a @ contended portable) @ local once portable
-    -> 'a @ contended portable
+    -> f:('k Access.t @ shared -> 'a @ contended once portable unique)
+       @ local once portable
+    -> 'a @ contended once portable unique
     @@ portable
 
   val access_shared_local
     :  'k t
-    -> f:('k Access.t @ shared -> 'a @ contended local portable) @ local once portable
-    -> 'a @ contended local portable
+    -> f:('k Access.t @ shared -> 'a @ contended local once portable unique)
+       @ local once portable
+    -> 'a @ contended local once portable unique
     @@ portable
 
   val globalize_unique : 'k t @ local unique -> 'k t @ unique @@ portable
@@ -608,7 +612,8 @@ module Mutex = struct
   exception Poisoned
 
   let[@inline never] poison_and_reraise
-    : type k. k t -> pw:k Password.t @ local -> exn:exn -> 'a @@ portable
+    : type (a : value_or_null) k. k t -> pw:k Password.t @ local -> exn:exn -> a @ unique
+    @@ portable
     =
     fun t ~pw ~exn ->
     t.poisoned <- true;
@@ -626,7 +631,9 @@ module Mutex = struct
   ;;
 
   let[@inline] with_lock
-    : type k. k t -> f:(k Password.t @ local -> 'a) @ local once -> 'a @@ portable
+    : type (a : value_or_null) k.
+      k t -> f:(k Password.t @ local -> a @ once unique) @ local once -> a @ once unique
+    @@ portable
     =
     fun t ~f ->
     M.lock t.mutex;
@@ -641,6 +648,30 @@ module Mutex = struct
          M.unlock t.mutex;
          x
        | exception exn -> poison_and_reraise t ~pw ~exn [@nontail])
+  ;;
+
+  let[@inline] with_key
+    : type (a : value_or_null) k.
+      k t
+      -> f:(k Key.t @ unique -> a * k Key.t @ once unique) @ local once
+      -> a @ once unique @@ portable
+    =
+    fun t ~f ->
+    M.lock t.mutex;
+    match t.poisoned with
+    | true ->
+      M.unlock t.mutex;
+      reraise Poisoned
+    | false ->
+      let key : k Key.t = Key.unsafe_mk () in
+      (match f key with
+       | x, _key ->
+         M.unlock t.mutex;
+         x
+       | exception exn ->
+         t.poisoned <- true;
+         M.unlock t.mutex;
+         reraise exn)
   ;;
 
   let[@inline] destroy t =
@@ -796,8 +827,17 @@ module Condition = struct
   external signal : 'k t -> unit @@ portable = "caml_capsule_condition_signal"
   external broadcast : 'k t -> unit @@ portable = "caml_capsule_condition_broadcast"
 
-  let[@inline] wait t ~(mutex : 'k Mutex.t) ~password:_ =
-    (* [mutex] is locked, so we know it is not poisoned. *)
-    wait t mutex.mutex
+  let[@inline] wait t ~(mutex : 'k Mutex.t) key =
+    (* Check that the mutex is not poisoned. It's safe to do so without locking:
+       either we hold the [key] because it's locked, or because it's poisoned. *)
+    match mutex.poisoned with
+    | true -> raise Mutex.Poisoned
+    | false ->
+      wait t mutex.mutex;
+      (* Check that the mutex wasn't poisoned again while we were waiting.
+         If it was, we can't return the key. *)
+      (match mutex.poisoned with
+       | true -> raise Mutex.Poisoned
+       | false -> key)
   ;;
 end

@@ -58,6 +58,7 @@ Caml_inline int capsule_condition_wait(capsule_condition cond, capsule_mutex mut
   caml_enter_blocking_section();
   int rc = syscall(SYS_futex, &cond->counter, FUTEX_WAIT_PRIVATE, old_count,
                    NULL, NULL, 0);
+  int futex_errno = errno;
   // Re-aquire the domain lock to avoid blocking other domains on our systhreads
   caml_leave_blocking_section();
 
@@ -66,8 +67,8 @@ Caml_inline int capsule_condition_wait(capsule_condition cond, capsule_mutex mut
   }
   atomic_store_explicit(&mut->owner, owner, memory_order_relaxed);
 
-  if (rc == -1 && errno != EAGAIN) {
-    return errno;
+  if (rc == -1 && futex_errno != EAGAIN) {
+    return futex_errno;
   }
   return CONDITION_SUCCESS;
 }

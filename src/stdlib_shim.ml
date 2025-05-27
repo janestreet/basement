@@ -1,5 +1,5 @@
 external runtime5 : unit -> bool @@ portable = "%runtime5"
-external ignore_contended : 'a @ contended -> unit = "%ignore"
+external ignore_contended : 'a @ contended -> unit @@ portable = "%ignore"
 external raise : exn -> 'a @ portable unique @@ portable = "%reraise"
 external raise_notrace : exn -> 'a @ portable unique @@ portable = "%raise_notrace"
 
@@ -111,6 +111,8 @@ module Callback = struct
 end
 
 module Domain = struct
+  let cpu_relax = if runtime5 () then Domain.cpu_relax else fun () -> ()
+
   module Safe = struct
     include Domain.Safe
 
@@ -118,10 +120,12 @@ module Domain = struct
       include Domain.Safe.DLS
 
       external magic_many__portable
-        :  'a @ once portable
-        -> 'a @ portable
+        :  ('a[@local_opt]) @ once portable
+        -> ('a[@local_opt]) @ portable
         @@ portable
         = "%identity"
+
+      let[@inline] access f = access (magic_many__portable f) [@nontail]
 
       let[@inline] new_key ?split_from_parent f =
         let split_from_parent =
@@ -164,6 +168,10 @@ module Modes = struct
 
   module Aliased = struct
     type 'a t = { aliased : 'a @@ aliased } [@@unboxed]
+  end
+
+  module Many = struct
+    type 'a t = { many : 'a @@ many } [@@unboxed]
   end
 end
 

@@ -118,7 +118,7 @@ module Password : sig
   val shared : 'k t @ local -> 'k Shared.t @ local @@ portable
 
   (** [with_current k f] calls [f] with a password for the current capsule [k]. *)
-  val with_current : 'k Access.t -> ('k t @ local -> 'a) @ local -> 'a @@ portable
+  val with_current : 'k Access.t -> ('k t @ local -> 'a) @ local once -> 'a @@ portable
 end
 
 (** Keys represent the ownership of the capsule. *)
@@ -130,7 +130,7 @@ module Key : sig
       ['k t @ aliased] indicates that the key has been permanently shared, since it's
       avaiable [aliased] and therefore not available [unique]ly. Therefore, we can allow
       all domains read access to ['k]. *)
-  type 'k t : value mod contended external_ portable
+  type 'k t : value mod contended external_ many portable
 
   type packed = P : 'k t -> packed [@@unboxed]
 
@@ -185,30 +185,32 @@ module Key : sig
       capsule, and the exception is reraised. *)
   val access
     :  'k t @ unique
-    -> f:('k Access.t -> 'a @ contended portable unique) @ local once portable
-    -> 'a * 'k t @ contended portable unique
+    -> f:('k Access.t -> 'a @ contended once portable unique) @ local once portable
+    -> 'a * 'k t @ contended once portable unique
     @@ portable
 
   (** As [access], but local. *)
   val access_local
     :  'k t @ unique
-    -> f:('k Access.t -> 'a @ contended local portable unique) @ local once portable
-    -> 'a * 'k t @ contended local portable unique
+    -> f:('k Access.t -> 'a @ contended local once portable unique) @ local once portable
+    -> 'a * 'k t @ contended local once portable unique
     @@ portable
 
   (** [access_shared k ~f] runs [f], providing it a shared access to ['k], and returns the
       result of [f]. Exceptions raised from [f] are re-raised. *)
   val access_shared
     :  'k t
-    -> f:('k Access.t @ shared -> 'a @ contended portable) @ local once portable
-    -> 'a @ contended portable
+    -> f:('k Access.t @ shared -> 'a @ contended once portable unique)
+       @ local once portable
+    -> 'a @ contended once portable unique
     @@ portable
 
   (** As [access_shared], but returns a local value. *)
   val access_shared_local
     :  'k t
-    -> f:('k Access.t @ shared -> 'a @ contended local portable) @ local once portable
-    -> 'a @ contended local portable
+    -> f:('k Access.t @ shared -> 'a @ contended local once portable unique)
+       @ local once portable
+    -> 'a @ contended local once portable unique
     @@ portable
 
   (** [globalize_unique k] promotes a local unique key to a global one. *)
@@ -288,7 +290,25 @@ module Mutex : sig
       is reraised.
 
       If [m] is already locked by the current thread, raises [Sys_error]. *)
-  val with_lock : 'k t -> f:('k Password.t @ local -> 'a) @ local once -> 'a @@ portable
+  val with_lock
+    : ('a : value_or_null) 'k.
+    'k t -> f:('k Password.t @ local -> 'a @ once unique) @ local once -> 'a @ once unique
+    @@ portable
+
+  (** [with_key m ~f] tries to acquire the mutex [m]. If [m] is already locked, blocks the
+      current thread until it's unlocked. If successful, provides [f] the key for the
+      capsule ['k] associated with [m].
+
+      If [f] raises an exception, the mutex is marked as poisoned and the exception is
+      reraised.
+
+      If [m] is already locked by the current thread, raises [Sys_error]. *)
+  val with_key
+    : ('a : value_or_null) 'k.
+    'k t
+    -> f:('k Key.t @ unique -> 'a * 'k Key.t @ once unique) @ local once
+    -> 'a @ once unique
+    @@ portable
 
   (** [destroy m] acquires the mutex [m] and returns the key representing ownership of
       ['k]. The mutex is marked as poisoned. *)
@@ -381,22 +401,24 @@ module Condition : sig
       ['k Mutex.t] and with a certain property {i P} that is protected by the mutex. *)
   val create : unit -> 'k t @@ portable
 
-  (** [wait t ~mutex ~password] atomically unlocks the mutex [m] and blocks the current
-      thread on the condition variable [t].
+  (** [wait t ~mutex key] atomically unlocks the [mutex] and blocks the current thread on
+      the condition variable [t]. To ensure exception safety, it takes hold of the
+      ['k Key.t] associated with the mutex, provided by [Mutex.with_key].
 
       This thread will be woken up when the condition variable [t] has been signaled via
       {!signal} or {!broadcast}. [mutex] is locked again before [wait] returns.
 
       However, this thread can also be woken up for no reason. One cannot assume that the
       property {i P} associated with the condition variable [c] holds when [wait] returns;
-      one must explicitly test whether {i P} holds after calling [wait]. *)
+      one must explicitly test whether {i P} holds after calling [wait].
+
+      If called on an already poisoned [mutex], raises [Mutex.Poisoned]. *)
   val wait
     :  'k t
     -> mutex:'k Mutex.t
-    -> password:'k Password.t @ local
-    -> unit
+    -> 'k Key.t @ unique
+    -> 'k Key.t @ unique
     @@ portable
-  [@@alert unsafe "[wait] is broken with poisoned mutexes."]
 
   (** [signal t] wakes up one of the threads waiting on the condition variable [t], if
       there is one. If there is none, this call has no effect. It is recommended to call
@@ -441,7 +463,7 @@ module Data : sig
 
   (** [create f] runs [f] within the capsule ['k] and returns a pointer to the result of
       [f]. *)
-  val create : (unit -> 'a) @ local portable -> ('a, 'k) t @@ portable
+  val create : (unit -> 'a) @ local once portable -> ('a, 'k) t @@ portable
 
   (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and
       returns a pointer to the result. *)
@@ -466,9 +488,9 @@ module Data : sig
       [contended]. *)
   val extract
     :  password:'k Password.t @ local
-    -> f:('a -> 'b @ contended portable) @ local once portable
+    -> f:('a -> 'b @ contended once portable unique) @ local once portable
     -> ('a, 'k) t
-    -> 'b @ contended portable
+    -> 'b @ contended once portable unique
     @@ portable
 
   (** [inject v] creates a pointer to a value [v] injected into the capsule ['k]. It's a
@@ -480,6 +502,13 @@ module Data : sig
       [project] does not require permission to access ['k]. This is safe because all
       accesses to the value happen only after it's marked [contended]. *)
   val project : ('a : value mod portable) 'k. ('a, 'k) t -> 'a @ contended @@ portable
+
+  (** [project_shared ~key t] is like [project t], but since [t] is a capsule associated
+      with a [key @ aliased global], the contents can be returned at [shared]. *)
+  val project_shared
+    : ('a : value mod portable) 'k.
+    key:'k Key.t -> ('a, 'k) t -> 'a @ shared
+    @@ portable
 
   (** [bind ~password ~f t] is [project (map ~password ~f t)]. *)
   val bind
@@ -545,7 +574,7 @@ module Data : sig
 
     (** [create f] runs [f] within the sub-capsule of ['k] and returns a pointer to the
         result. *)
-    val create : (unit -> 'a) @ local portable -> ('a, 'k) t @@ portable
+    val create : (unit -> 'a) @ local once portable -> ('a, 'k) t @@ portable
 
     (** [map ~password ~f t] applies [f] to the value of [p] within the sub-capsule of
         ['k] and returns a pointer to the result. *)
@@ -630,7 +659,10 @@ module Data : sig
 
       (** [create f] runs [f] within the sub-capsule of ['k] and returns a local pointer
           to the result. *)
-      val create : (unit -> 'a @ local) @ local portable -> ('a, 'k) t @ local @@ portable
+      val create
+        :  (unit -> 'a @ local) @ local once portable
+        -> ('a, 'k) t @ local
+        @@ portable
 
       (** [map ~pasword ~f t] applies [f] to the value of [p] within the sub-capsule of
           ['k] and returns a local pointer to the result. *)
@@ -741,7 +773,10 @@ module Data : sig
 
     (** [create f] runs [f] within the capsule ['k] and returns a local pointer to the
         result of [f]. *)
-    val create : (unit -> 'a @ local) @ local portable -> ('a, 'k) t @ local @@ portable
+    val create
+      :  (unit -> 'a @ local) @ local once portable
+      -> ('a, 'k) t @ local
+      @@ portable
 
     (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and
         returns a local pointer to the result. *)
@@ -789,6 +824,13 @@ module Data : sig
     val project
       : ('a : value mod portable) 'k.
       ('a, 'k) t @ local -> 'a @ contended local
+      @@ portable
+
+    (** [project_shared ~key t] is like [project t], but since [t] is a capsule associated
+        with a [key @ aliased global], the contents can be returned at [shared]. *)
+    val project_shared
+      : ('a : value mod portable) 'k.
+      key:'k Key.t -> ('a, 'k) t @ local -> 'a @ local shared
       @@ portable
 
     (** [bind ~password ~f t] is [project (map ~password ~f t)]. *)

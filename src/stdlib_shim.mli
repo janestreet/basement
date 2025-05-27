@@ -10,7 +10,7 @@ external runtime5 : unit -> bool @@ portable = "%runtime5"
 (** Like {!ignore}, but takes a [contended] value. This is technically strictly stronger
     than [ignore], but changing [ignore] in place causes backwards compatibility issues
     due to type inference. *)
-external ignore_contended : 'a @ contended -> unit = "%ignore"
+external ignore_contended : 'a @ contended -> unit @@ portable = "%ignore"
 
 external raise : exn -> 'a @ portable unique @@ portable = "%reraise"
 external raise_notrace : exn -> 'a @ portable unique @@ portable = "%raise_notrace"
@@ -133,6 +133,10 @@ end
 module Domain : sig @@ portable
   type 'a t := 'a Domain.t
 
+  (** If busy-waiting, calling cpu_relax () between iterations will improve performance on
+      some CPU architectures. On runtime4, this is a noop. *)
+  val cpu_relax : unit -> unit
+
   module Safe : sig
     module DLS : sig
       module Access : sig
@@ -146,7 +150,7 @@ module Domain : sig @@ portable
       exception Encapsulated of string
 
       val access
-        :  (Access.t -> 'a @ contended portable) @ local portable
+        :  (Access.t -> 'a @ contended portable) @ local once portable
         -> 'a @ contended portable
         @@ portable
 
@@ -350,6 +354,10 @@ module Modes : sig
 
   module Aliased : sig
     type 'a t = { aliased : 'a @@ aliased } [@@unboxed]
+  end
+
+  module Many : sig
+    type 'a t = { many : 'a @@ many } [@@unboxed]
   end
 end
 

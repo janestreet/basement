@@ -83,9 +83,10 @@ let with_read_guarded x (f : ('a, 'b) func') =
 
 (* reading from myref with the expected modes *)
 let read_ref
-  : ('a : value mod portable). 'a myref @ shared -> 'a @ contended portable @@ portable
+  : ('a : value mod portable). 'a myref @ shared -> 'a aliased @ contended portable unique
+  @@ portable
   =
-  fun r -> r.v
+  fun r -> { aliased = r.v }
 ;;
 
 (* writing to myref with the expected modes *)
@@ -111,7 +112,9 @@ let%expect_test "rwlock API" =
       ptr
       { f =
           (fun password p ->
-            [%test_result: int] (Capsule.Data.extract p ~password ~f:read_ref) ~expect:42)
+            [%test_result: int]
+              (Capsule.Data.extract p ~password ~f:read_ref).aliased
+              ~expect:42)
       }
   in
   let ptr' =
@@ -129,7 +132,9 @@ let%expect_test "rwlock API" =
       ptr
       { f =
           (fun password p ->
-            [%test_result: int] (Capsule.Data.extract p ~password ~f:read_ref) ~expect:15)
+            [%test_result: int]
+              (Capsule.Data.extract p ~password ~f:read_ref).aliased
+              ~expect:15)
       }
   in
   let () =
@@ -137,7 +142,9 @@ let%expect_test "rwlock API" =
       ptr'
       { f =
           (fun password p ->
-            [%test_result: int] (Capsule.Data.extract p ~password ~f:read_ref) ~expect:2)
+            [%test_result: int]
+              (Capsule.Data.extract p ~password ~f:read_ref).aliased
+              ~expect:2)
       }
   in
   (* [extract_shared]. *)
@@ -147,7 +154,7 @@ let%expect_test "rwlock API" =
       { f =
           (fun password p ->
             [%test_result: int]
-              (Capsule.Data.extract_shared p ~password ~f:read_ref)
+              (Capsule.Data.extract_shared p ~password ~f:read_ref).aliased
               ~expect:15)
       }
   in
@@ -172,7 +179,7 @@ let%expect_test "rwlock API" =
               Capsule.Data.map_shared p ~password ~f:(fun (r @ shared) -> { v = r.v + 3 })
             in
             [%test_result: int]
-              (Capsule.Data.extract_shared ptr' ~password ~f:read_ref)
+              (Capsule.Data.extract_shared ptr' ~password ~f:read_ref).aliased
               ~expect:20)
       }
   in
@@ -187,6 +194,7 @@ let%expect_test "rwlock API" =
                  p
                  ~password:(Capsule.Password.shared password)
                  ~f:read_ref)
+                .aliased
               ~expect:15)
       }
   in
@@ -199,7 +207,9 @@ let%expect_test "rwlock API" =
             Capsule.access_shared ~password ~f:(fun access ->
               let r = Capsule.Data.unwrap_shared ~access p in
               let ptr' = Capsule.Data.Shared.wrap ~access { v = r.v + 3 } in
-              let res = Capsule.Data.Shared.extract ptr' ~password ~f:read_ref in
+              let { aliased = res } =
+                Capsule.Data.Shared.extract ptr' ~password ~f:read_ref
+              in
               assert (res = 20))
             [@nontail])
       }
@@ -237,8 +247,8 @@ let%expect_test "rwlock API" =
     let (Mk (m, p)) = ptr2 in
     let access = Capsule.Key.destroy (Capsule.Rwlock.destroy m) in
     let r1, r2 = Capsule.Data.unwrap ~access p in
-    [%test_result: int] (read_ref r1) ~expect:15;
-    [%test_result: int] (read_ref r2) ~expect:3
+    [%test_result: int] (read_ref r1).aliased ~expect:15;
+    [%test_result: int] (read_ref r2).aliased ~expect:3
   in
   let () =
     match with_write_guarded ptr { f = (fun _ _ -> ()) } with
