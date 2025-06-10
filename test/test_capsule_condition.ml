@@ -1,5 +1,6 @@
 open! Base
 open Basement
+module Atomic = Stdlib.Atomic
 
 module Domain = struct
   include Domain

@@ -6,17 +6,6 @@ open Basement
 (* Disable alert on [Domain.spawn] since we are explicitly testing its behavior. *)
 [@@@alert "-unsafe_parallelism"]
 
-(* Temporary portable redefinitions of functions from Base used by the tests in this
-   module *)
-open struct
-  external ( + ) : int -> int -> int @@ portable = "%addint"
-
-  module Domain = struct
-    include Stdlib.Domain
-    include Stdlib_shim.Domain.Safe
-  end
-end
-
 let%expect_test _ =
   let t = Portable_lazy.from_val 1 in
   print_s [%message (Portable_lazy.is_val t : bool)];
@@ -59,7 +48,7 @@ let%expect_test ("if multiple domains force at the same time, the lazy still alw
   let barrier = Barrier.create ndomains in
   let domains =
     List.init ndomains ~f:(fun _ ->
-      Domain.spawn (fun () ->
+      Domain.Safe.spawn (fun () ->
         Barrier.await barrier;
         Portable_atomic.incr (Portable_lazy.force t)))
   in
@@ -76,7 +65,7 @@ let%expect_test ("if multiple domains force at the same time, the thunk is only 
   let barrier = Barrier.create ndomains in
   let domains =
     List.init ndomains ~f:(fun _ ->
-      Domain.spawn (fun () ->
+      Domain.Safe.spawn (fun () ->
         Barrier.await barrier;
         Portable_lazy.force t))
   in

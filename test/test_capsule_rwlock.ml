@@ -60,9 +60,6 @@ let%expect_test "[RwCell] basics" =
 
 (** Testing individual capsule operations over a password captured by a rwlock *)
 
-external ( + ) : int -> int -> int @@ portable = "%addint"
-external reraise : exn -> 'a @ portable @@ portable = "%reraise"
-
 type 'a guarded = Mk : 'k Capsule.Rwlock.t * ('a, 'k) Capsule.Data.t -> 'a guarded
 
 type ('a, 'b) func =
@@ -83,8 +80,8 @@ let with_read_guarded x (f : ('a, 'b) func') =
 
 (* reading from myref with the expected modes *)
 let read_ref
-  : ('a : value mod portable). 'a myref @ shared -> 'a aliased @ contended portable unique
-  @@ portable
+  : ('a : value mod portable).
+  ('a myref @ shared -> 'a aliased @ contended portable unique) @ portable
   =
   fun r -> { aliased = r.v }
 ;;
@@ -93,9 +90,6 @@ let read_ref
 let write_ref : ('a : value mod contended portable). 'a -> ('a myref -> unit) @ portable =
   fun v r -> r.v <- v
 ;;
-
-exception Leak of int myref
-exception ReadLockTestException of int myref @@ shared
 
 type lost_capsule = |
 
@@ -214,25 +208,6 @@ let%expect_test "rwlock API" =
             [@nontail])
       }
   in
-  (* An exception raised from [iter] is marked as [contended]: *)
-  let () =
-    with_write_guarded
-      ptr
-      { f =
-          (fun (type k) (password : k Capsule.Password.t) p ->
-            match Capsule.Data.iter p ~password ~f:(fun r -> reraise (Leak r)) with
-            | exception Capsule.Encapsulated (id, exn_data) ->
-              (match
-                 Capsule.Password.Id.equality_witness id (Capsule.Password.id password)
-               with
-               | Some Equal ->
-                 Capsule.Data.iter exn_data ~password ~f:(function
-                   | Leak _r -> ()
-                   | _ -> assert false)
-               | None -> assert false)
-            | _ -> assert false)
-      }
-  in
   (* [map], [both]. *)
   let ptr2 =
     let (Mk (m, p)) = ptr in
@@ -303,35 +278,6 @@ let%expect_test "rwlock API" =
     with
     | exception Capsule.Rwlock.Frozen -> ()
     | _ -> assert false
-  in
-  (* Exceptions raised from [with_read_lock]. *)
-  let () =
-    let ptr =
-      let (P k) = Capsule.create () in
-      let m = Capsule.Rwlock.create k in
-      Mk (m, Capsule.Data.create (fun () -> { v = 999 }))
-    in
-    with_read_guarded
-      ptr
-      { f =
-          (fun (type k) (password : k Capsule.Password.Shared.t) p ->
-            match
-              Capsule.Data.extract_shared p ~password ~f:(fun r ->
-                reraise (ReadLockTestException r))
-            with
-            | exception Capsule.Encapsulated_shared (id, exn_data) ->
-              (match
-                 Capsule.Password.Id.equality_witness
-                   id
-                   (Capsule.Password.Shared.id password)
-               with
-               | Some Equal ->
-                 Capsule.Data.Shared.iter exn_data ~password ~f:(function
-                   | ReadLockTestException { v = 999 } -> ()
-                   | _ -> assert false)
-               | None -> assert false)
-            | _ -> assert false)
-      }
   in
   ()
 ;;

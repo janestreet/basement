@@ -9,7 +9,7 @@ type 'a aliased_many = AliasedMany of 'a @@ aliased many [@@unboxed]
 
 let%expect_test "[Capsule.Key] basics" =
   (* [Capsule.create] creates a new capsule with an unique key. *)
-  let packed : Capsule.Key.packed @@ unique = Capsule.create () in
+  let packed : Capsule.Key.packed @ unique = Capsule.create () in
   let (P k) = packed in
   let AliasedMany x, k =
     Capsule.Key.access k ~f:(fun access ->
@@ -63,15 +63,14 @@ let%expect_test "Encapsulated exceptions from inside [with_password] are unwrapp
 let%expect_test "[with_password_local] destroys the key but returns a local value" =
   let (P k) = Capsule.create () in
   let x, password =
-    Capsule.Key.with_password_local k ~f:(fun password ->
-      exclave_
+    Capsule.Key.with_password_local k ~f:(fun password -> exclave_
       ( Capsule.access_local ~password ~f:(fun access ->
           Capsule.Data.wrap ~access (ref "Local value"))
       , password ))
   in
   (* We can still access the data through the password. *)
   let s =
-    Capsule.Data.Local.extract x ~password ~f:(fun x -> (x.contents : string @@ portable))
+    Capsule.Data.Local.extract x ~password ~f:(fun x -> (x.contents : string @ portable))
   in
   assert (s = "Local value")
 ;;

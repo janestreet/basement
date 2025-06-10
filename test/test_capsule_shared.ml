@@ -5,9 +5,10 @@ module Data = Capsule.Data
 
 type 'a myref = { mutable v : 'a }
 
-let mk_ref : 'a -> 'a myref @@ portable = fun v -> { v }
+let mk_ref : ('a -> 'a myref) @ portable = fun v -> { v }
 
-let read_ref : ('a : value mod portable). 'a myref -> 'a @ contended portable @@ portable =
+let read_ref : ('a : value mod portable). ('a myref -> 'a @ contended portable) @ portable
+  =
   fun r -> r.v
 ;;
 

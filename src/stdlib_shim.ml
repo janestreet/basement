@@ -215,6 +215,12 @@ module Obj = struct
     @@ portable
     = "%identity"
 
+  external magic_unyielding
+    :  'a @ local yielding
+    -> 'a @ local unyielding
+    @@ portable
+    = "%identity"
+
   external magic_at_unique
     :  ('a[@local_opt]) @ unique
     -> ('b[@local_opt]) @ unique

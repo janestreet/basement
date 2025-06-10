@@ -1,18 +1,17 @@
 open! Base
 open Basement
-
-external reraise : exn -> 'a @ portable @@ portable = "%reraise"
+open Expect_test_helpers_base
 
 type 'a myref = { mutable v : 'a }
 
-let mk_ref : 'a -> 'a myref @@ portable = fun v -> { v }
+let mk_ref : ('a -> 'a myref) @ portable = fun v -> { v }
 
 (* We need ['a] to be [portable] to return a [portable] value from the read.
    The return value is marked as [contended] because our callsites require that,
    but the typechecker does not implicitly downcast the result. *)
 let read_ref
-  : ('a : value mod portable). 'a myref -> 'a aliased @ contended portable unique
-  @@ portable
+  : ('a : value mod portable). ('a myref -> 'a aliased @ contended portable unique)
+  @ portable
   =
   fun r -> { aliased = r.v }
 ;;
@@ -97,50 +96,7 @@ let%expect_test "Other capsules unaffected by modifications" =
     }
 ;;
 
-exception Leak of int myref
-
-let%expect_test "Raised exceptions are marked as contended" =
-  with_guarded
-    ptr
-    { f =
-        (fun (type k) (password : k Capsule.Password.t) p ->
-          match Capsule.Data.iter p ~password ~f:(fun r -> reraise (Leak r)) with
-          | exception Capsule.Encapsulated (id, exn_data) ->
-            (match
-               Capsule.Password.Id.equality_witness id (Capsule.Password.id password)
-             with
-             | Some Equal ->
-               Capsule.Data.iter exn_data ~password ~f:(function
-                 | Leak _r -> ()
-                 | _ -> assert false)
-             | None -> assert false)
-          | _ -> assert false)
-    }
-;;
-
-let%expect_test "Raised exceptions are marked as contended" =
-  with_guarded
-    ptr
-    { f =
-        (fun (type k) (password : k Capsule.Password.t) (p : _ Capsule.Data.t) ->
-          match
-            Capsule.access ~password ~f:(fun access ->
-              reraise (Leak (Capsule.Data.unwrap ~access p)))
-          with
-          | exception Capsule.Encapsulated (id, exn_data) ->
-            (match
-               Capsule.Password.Id.equality_witness id (Capsule.Password.id password)
-             with
-             | Some Equal ->
-               Capsule.Data.iter exn_data ~password ~f:(function
-                 | Leak _r -> ()
-                 | _ -> assert false)
-             | None -> assert false)
-          | _ -> assert false)
-    }
-;;
-
-let ptr2 =
+let ptr2 () =
   let (Mk (m, p)) = ptr in
   let p' =
     (Capsule.Mutex.with_lock m ~f:(fun password ->
@@ -162,7 +118,7 @@ let%expect_test "[map], [both], [fst], [snd]" =
 ;;
 
 let%expect_test "[Capsule.Key.destroy]" =
-  let (Mk (m, p)) = ptr2 in
+  let (Mk (m, p)) = ptr2 () in
   let access = Capsule.Key.destroy (Capsule.Mutex.destroy m) in
   let r1, r2 = Capsule.Data.unwrap ~access p in
   [%test_result: int] (read_ref r1).aliased ~expect:15;
@@ -170,21 +126,18 @@ let%expect_test "[Capsule.Key.destroy]" =
 ;;
 
 let%expect_test "[Mutex] operations on poisoned mutex raise [Poisoned]" =
-  match with_guarded ptr { f = (fun _ _ -> ()) } with
-  | exception Capsule.Mutex.Poisoned -> ()
-  | _ -> assert false
+  require_does_raise (fun () -> with_guarded ptr { f = (fun _ _ -> ()) });
+  [%expect {| (Basement__Capsule.Mutex.Poisoned) |}]
 ;;
 
 let%expect_test "[Mutex] operations on poisoned mutex raise [Poisoned]" =
-  match with_guarded ptr' { f = (fun _ _ -> ()) } with
-  | exception Capsule.Mutex.Poisoned -> ()
-  | _ -> assert false
+  require_does_raise (fun () -> with_guarded ptr' { f = (fun _ _ -> ()) });
+  [%expect {| (Basement__Capsule.Mutex.Poisoned) |}]
 ;;
 
 let%expect_test "[Mutex] operations on poisoned mutex raise [Poisoned]" =
-  match with_guarded ptr2 { f = (fun _ _ -> ()) } with
-  | exception Capsule.Mutex.Poisoned -> ()
-  | _ -> assert false
+  require_does_raise (fun () -> with_guarded (ptr2 ()) { f = (fun _ _ -> ()) });
+  [%expect {| (Basement__Capsule.Mutex.Poisoned) |}]
 ;;
 
 let%expect_test "[Data.inject] and [Data.project]" =

@@ -24,7 +24,7 @@ module Cell = struct
   let read (type a : value mod contended portable) (t : a t) : a =
     let (Mk (m, p)) = t in
     (Capsule.Mutex.with_lock m ~f:(fun password ->
-       let read' : a myref -> a aliased @ contended once portable unique @@ portable =
+       let read' : (a myref -> a aliased @ contended once portable unique) @ portable =
          fun r -> { aliased = r.v }
        in
        Capsule.Data.extract p ~password ~f:read'))

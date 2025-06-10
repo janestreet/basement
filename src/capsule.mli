@@ -34,7 +34,17 @@
 
     Using a ['k Key.t] more than once turns it into an [aliased] key. Aliased global keys
     indicate that the corresponding capsule has been permanently shared across threads
-    with read-only access. *)
+    with read-only access.
+
+    {1 Exceptions}
+
+    Currently, it is possible to break the soundness guarantees of the capsule API by
+    defining an exception which contains mutable state or nonportable functions, and
+    "smuggling" values out of a capsule by raising that exception out of one of the
+    callbacks in this module. In the medium-term, we plan to distinguish portable
+    exception constructors, whose contents cross portability and contention, from
+    nonportable exception constructors. In the meantime we are consciously leaving this
+    soundness gap for the sake of improved ergonomics over encapsulating exceptions. *)
 
 (** An [Access.t] allows wrapping and unwrapping [Data.t] values from the current capsule. *)
 module Access : sig
@@ -85,20 +95,7 @@ module Password : sig
       with ['k]. The mode system prevents retaining the ['k t] after releasing access to
       the capsule. This guarantees that uncontended access to the capsule is only granted
       to one domain at a time. *)
-  type 'k t : value mod contended portable
-
-  (** An [Id.t] is used to enable runtime identification of passwords. *)
-  module Id : sig
-    (** A ['k Id.t] represents the identity of a password. *)
-    type 'k t : immediate
-
-    (** [equality_witness a b] performs a runtime check that the two given ids identify
-        the same password, returning a witness of their equality if so. *)
-    val equality_witness : 'k1 t -> 'k2 t -> ('k1, 'k2) Type.eq option @@ portable
-  end
-
-  (** [id t] identifies the password ['k t] at runtime. *)
-  val id : 'k t @ local -> 'k Id.t @@ portable
+  type 'k t : value mod contended external_ portable
 
   (** Shared passwords represent permission to get shared access to a capsule. *)
   module Shared : sig
@@ -108,10 +105,17 @@ module Password : sig
 
         Obtaining a ['k t] requires a ['k Key.t @ aliased] or read-acquiring the
         reader-writer lock associated with ['k]. *)
-    type 'k t : value mod contended portable
+    type 'k t : value mod contended external_ portable
 
-    (** [id t] identifies the shared password ['k t] at runtime. *)
-    val id : 'k t @ local -> 'k Id.t @@ portable
+    (** [borrow t f] calls [f] with the shared password [t] upgraded to unyielding. The
+        function [f] is itself unyielding, so cannot close over passwords. This allows the
+        borrowed password to be safely closed over in local parallel tasks, which receive
+        temporary read-only access to the capsule. *)
+    val borrow
+      :  'k t @ local
+      -> ('k t @ local unyielding -> 'a) @ local once unyielding
+      -> 'a
+      @@ portable
   end
 
   (** [shared t] downgrades a ['k] password to a ['k] shared password. *)
@@ -138,9 +142,7 @@ module Key : sig
       result of [f] together with the key.
 
       If [f] raises an exception, the key is destroyed, leaking the contents of the
-      capsule, and the exception is reraised. If that exception is
-      [Encapsulated (id, exn)] or [Encapsulated_shared (id, exn)] (see below), it is
-      unwrapped and the original [exn] is reraised. *)
+      capsule. *)
   val with_password
     :  'k t @ unique
     -> f:('k Password.t @ local -> 'a @ unique) @ local once
@@ -149,10 +151,7 @@ module Key : sig
 
   (** [with_password_local k ~f] runs [f], providing it a password for ['k], and returns
       the result of [f]. The key is destroyed, but the local password can be returned to
-      provide access to the capsule.
-
-      If [f] raises an [Encapsulated (id, exn)] or [Encapsulated_shared (id, exn)]
-      exception (see below), it is unwrapped and the original [exn] is reraised. *)
+      provide access to the capsule. *)
   val with_password_local
     :  'k t @ unique
     -> f:('k Password.t @ local -> 'a @ local) @ local once
@@ -160,11 +159,7 @@ module Key : sig
     @@ portable
 
   (** [with_password_shared k ~f] runs [f], providing it a shared password for ['k], and
-      returns the result of [f].
-
-      If [f] raises an exception, it will be reraised. If that exception is
-      [Encapsulated_shared (id, exn)] (see below), it is uwrapped and the original [exn]
-      is reraised. *)
+      returns the result of [f]. *)
   val with_password_shared
     :  'k t
     -> f:('k Password.Shared.t @ local -> 'a) @ local once
@@ -219,6 +214,9 @@ module Key : sig
   (** [destroy k] returns ['k Access.t] for ['k], merging it with the current capsule. The
       key is destroyed. *)
   val destroy : 'k t @ unique -> 'k Access.t @@ portable
+
+  (** [unsafe_mk ()] unsafely makes a unique key for an arbitrary capsule. *)
+  val unsafe_mk : unit -> 'k t @ unique @@ portable
 end
 
 (** [create ()] creates a new capsule with an associated key. *)
@@ -267,11 +265,7 @@ module Mutex : sig
 
   (** [packed] is the type of a mutex for some unknown capsule. Unpacking one provides a
       ['k Mutex.t] together with a fresh existential type brand for ['k]. *)
-  type packed : value mod contended portable = P : 'k t -> packed
-  [@@unboxed]
-  [@@unsafe_allow_any_mode_crossing
-    "TODO: This can go away once we have proper mode crossing inference for GADT \
-     constructors "]
+  type packed : value mod contended portable = P : 'k t -> packed [@@unboxed]
 
   (** [create k] creates a new mutex for the capsule ['k], consuming its key. *)
   val create : 'k Key.t @ unique -> 'k t @@ portable
@@ -285,9 +279,7 @@ module Mutex : sig
       the capsule ['k] associated with [m].
 
       If [f] raises an exception, the mutex is marked as poisoned and the exception is
-      reraised. If that exception is [Encapsulated (id, exn)] or
-      [Encapsulated_shared (id, exn)] (see below), it is unwrapped and the original [exn]
-      is reraised.
+      reraised.
 
       If [m] is already locked by the current thread, raises [Sys_error]. *)
   val with_lock
@@ -349,9 +341,7 @@ module Rwlock : sig
       provides [f] a password for the capsule ['k] associated with [rw].
 
       If [f] raises an exception, the reader-writer lock is marked as poisoned and the
-      exception is reraised. If that exception is [Encapsulated (id, exn)] or
-      [Encapsulated_shared (id, exn)] (see below), it is unwrapped and the original [exn]
-      is reraised.
+      exception is reraised.
 
       If [m] is already write-locked by the current thread, raises [Sys_error]. If [m] is
       already read-locked by the current thread, deadlocks. *)
@@ -367,9 +357,7 @@ module Rwlock : sig
       successful, provides [f] a password for the capsule ['k] associated with [rw].
 
       If [f] raises an exception, the reader-writer lock is marked as frozen. The reader
-      count is decreased and the exception is reraised. If that exception is
-      [Encapsulated_shared (id, exn)] (see below), it is unwrapped and the original [exn]
-      is reraised.
+      count is decreased and the exception is reraised.
 
       If [m] is already write-locked by the current thread, raises [Sys_error]. If [m] is
       already read-locked by the current thread, nothing happens. *)
@@ -553,8 +541,7 @@ module Data : sig
     type ('a, 'k) data = ('a, 'k) t
 
     (** [('a, 'k) t] is the type of ['a]s in a "sub-capsule" of ['k] that has a [shared]
-        view of ['k] and [uncontended] access to the sub-capsule enclosing ['a]. It's
-        mainly used in the [Encapsulate_shared] exception.
+        view of ['k] and [uncontended] access to the sub-capsule enclosing ['a].
 
         Both read and write operations only require ['k Access.t @ shared]. However,
         unlike [('a, 'k) Data.t], [('a, 'k) Data.Shared.t] does not cross contention. *)
@@ -873,14 +860,3 @@ module Data : sig
       @@ portable
   end
 end
-
-(** If a function accessing the contents of a capsule raises an exception, it is wrapped
-    in [Encapsulated] to avoid leaking access to the data. The [Password.Id.t] can be used
-    to associate the [Data.t] with a particular [Password.t]. *)
-exception Encapsulated : 'k Password.Id.t * (exn, 'k) Data.t -> exn
-
-(** If a function accessing the shared contents of a capsule raises an exception, it is
-    wrapped in [Encapsulated_shared] to avoid leaking access to the data. The
-    [Password.Id.t] can be used to associate the [Data.Shared.t] with a particular
-    [Password.Shared.t]. *)
-exception Encapsulated_shared : 'k Password.Id.t * (exn, 'k) Data.Shared.t -> exn

@@ -150,7 +150,7 @@ module Domain : sig @@ portable
       exception Encapsulated of string
 
       val access
-        :  (Access.t -> 'a @ contended portable) @ local once portable
+        :  (Access.t -> 'a @ contended portable) @ local once portable unyielding
         -> 'a @ contended portable
         @@ portable
 
@@ -371,6 +371,7 @@ module Obj : sig @@ portable
 
   external magic_unique : ('a[@local_opt]) -> ('a[@local_opt]) @ unique = "%identity"
   external magic_many : ('a[@local_opt]) @ once -> ('a[@local_opt]) = "%identity"
+  external magic_unyielding : 'a @ local yielding -> 'a @ local unyielding = "%identity"
 
   external magic_at_unique
     :  ('a[@local_opt]) @ unique
