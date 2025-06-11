@@ -89,6 +89,7 @@ typedef struct {
 Caml_inline int capsule_mutex_lock(capsule_mutex mut) {
 
 #ifdef __APPLE__
+  /* This only returns non-zero on timeout; don't need the other checks */
   if (dispatch_semaphore_wait(mut->sem, DISPATCH_TIME_NOW) == MUTEX_SUCCESS) {
     atomic_store_explicit(&mut->owner, capsule_fiber_current(), memory_order_relaxed);
     return MUTEX_SUCCESS;
@@ -112,6 +113,7 @@ Caml_inline int capsule_mutex_lock(capsule_mutex mut) {
 
   caml_enter_blocking_section();
 #ifdef __APPLE__
+  // No need to check return value, as we're not setting a timeout
   dispatch_semaphore_wait(mut->sem, DISPATCH_TIME_FOREVER);
 #else
   int rc = sem_wait(&mut->sem);
@@ -183,6 +185,7 @@ Caml_inline int capsule_mutex_destroy(capsule_mutex mut) {
     caml_stat_free(mut);
     return MUTEX_SUCCESS;
   }
+  caml_stat_free(mut);
   return errno;
 #endif
 }
