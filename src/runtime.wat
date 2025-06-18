@@ -158,6 +158,12 @@
          (else
             (local.get $old))))
 
+   (func (export "caml_atomic_set_stub")
+      (param $ref (ref eq)) (param $i (ref eq)) (result (ref eq))
+      (array.set $block (ref.cast (ref $block) (local.get $ref)) (i32.const 1)
+         (local.get $i))
+      (ref.i31 (i32.const 0)))
+
    (func (export "caml_atomic_add_stub")
       (param $ref (ref eq)) (param $i (ref eq)) (result (ref eq))
       (local $b (ref $block))
