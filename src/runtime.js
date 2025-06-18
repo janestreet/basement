@@ -13,6 +13,12 @@ function caml_atomic_compare_exchange_stub(ref, o, n) {
   return old;
 }
 
+//Provides: caml_atomic_set_stub
+function caml_atomic_set_stub(ref, i) {
+  ref[1] = i;
+  return 0;
+}
+
 //Provides: caml_atomic_add_stub
 function caml_atomic_add_stub(ref, i) {
   ref[1] += i;
