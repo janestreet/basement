@@ -87,7 +87,7 @@ val get_initial
 (** Passwords represent permission to get access to a capsule. *)
 module Password : sig
   (** ['k t] is the type of "passwords" representing permission for the current domain to
-      have [uncontended] access to the capsule ['k]. They are only ever avilable locally,
+      have [uncontended] access to the capsule ['k]. They are only ever available locally,
       so cannot move between domains.
 
       Obtaining a ['k t] requires exclusive access to ['k], either through a
@@ -100,7 +100,7 @@ module Password : sig
   (** Shared passwords represent permission to get shared access to a capsule. *)
   module Shared : sig
     (** ['k t] is the type of "shared passwords" representing permission for the current
-        domain to have [shared] access to the capsule ['k]. They are only ever avilable
+        domain to have [shared] access to the capsule ['k]. They are only ever available
         locally, and so cannot move between domains.
 
         Obtaining a ['k t] requires a ['k Key.t @ aliased] or read-acquiring the
