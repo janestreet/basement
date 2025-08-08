@@ -13,9 +13,9 @@
     not-yet-supported with-kinds. Example idiomatic usage:
 
     {[
-      let use_portably _ = ()
+      let use_portably (_ @ portable) = ()
 
-      let f (x : (string * bool) list) =
+      let f (x : (string * bool) list @@ nonportable) =
         Cross.Portable.(cross (list (tuple2 infer infer))) x |> use_portably
       ;;
     ]} *)
@@ -114,6 +114,19 @@ external magic_uncontended__needs_base_and_core : 'a -> 'a = "%identity"
 (** Unsafely assert that a value is portable, but that showing such requires the ability
     to instantiate (portable) functors inside of a portable function. *)
 external magic_portable__needs_portable_functors : 'a -> 'a = "%identity"
+
+(** Unsafely assert that an exn is portable, promising that the exn has a portable payload
+    or that the exn, if its payload is not portable, is not matched on from within a
+    portable function. A future compiler roll will make exns mode cross portability with
+    the stipulation that exceptions with nonportable payloads cannot be matched on from
+    within a portable function. *)
+external magic_portable__needs_mode_crossing_exns : exn -> exn = "%identity"
+
+(** Unsafely assert that an exn is uncontended, promising that the exn has a
+    contention-crossing payload. A future compiler roll will make exns mode cross
+    contention with the stipulation that exceptions with non-contention-crossing payloads
+    cannot be matched on from within a portable function. *)
+external magic_uncontended__needs_mode_crossing_exns : exn -> exn = "%identity"
 
 (** Unsafely assert that a value is uncontended because it is "deeply immutable". If
     support is added for [cocontended], this value should be able to be marked as

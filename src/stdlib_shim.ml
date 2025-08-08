@@ -2,6 +2,7 @@
 [@@@alert "-unsafe_multidomain"]
 
 external runtime5 : unit -> bool = "caml_is_runtime5_stub"
+external poll : unit -> unit = "%identity"
 external ignore_contended : 'a -> unit = "%ignore"
 external raise : exn -> 'a = "%reraise"
 external raise_notrace : exn -> 'a = "%raise_notrace"
@@ -57,7 +58,14 @@ module Callback = struct
 end
 
 module Domain = struct
+  type id = int
+
   let cpu_relax = if runtime5 () then Domain.cpu_relax else fun () -> ()
+  let self = if runtime5 () then (Domain.self :> unit -> id) else fun () -> 0
+
+  let recommended_domain_count =
+    if runtime5 () then Domain.recommended_domain_count else fun () -> 1
+  ;;
 
   module Safe = struct
     module DLS = struct
@@ -78,6 +86,8 @@ module Domain = struct
           let exn_string = Printexc.to_string exn in
           Printexc.raise_with_backtrace (Encapsulated exn_string) bt
       ;;
+
+      let access__local = access
 
       let[@inline] new_key ?split_from_parent f =
         let split_from_parent =
@@ -102,11 +112,53 @@ module Domain = struct
       let set Access.Access k v = Domain.DLS.set k v
     end
 
-    let spawn = Domain.spawn
-    let[@inline] spawn' f = Domain.spawn (fun () -> f DLS.Access.Access)
     let at_exit = Domain.at_exit
     let[@inline] at_exit' DLS.Access.Access f = Domain.at_exit f
   end
+end
+
+module Backoff = struct
+  type t = int
+
+  let cpu_relax = Domain.cpu_relax
+  let single_mask = Bool.to_int (Domain.recommended_domain_count () = 1) - 1
+  let bits = 5
+  let max_wait_log = 30
+  let mask = (1 lsl bits) - 1
+
+  let create ?(lower_wait_log = 4) ?(upper_wait_log = 17) () =
+    assert (
+      0 <= lower_wait_log
+      && lower_wait_log <= upper_wait_log
+      && upper_wait_log <= max_wait_log);
+    (upper_wait_log lsl (bits * 2)) lor (lower_wait_log lsl bits) lor lower_wait_log
+  ;;
+
+  let get_upper_wait_log backoff = backoff lsr (bits * 2)
+  let get_lower_wait_log backoff = (backoff lsr bits) land mask
+  let get_wait_log backoff = backoff land mask
+
+  let reset backoff =
+    let lower_wait_log = get_lower_wait_log backoff in
+    backoff land lnot mask lor lower_wait_log
+  ;;
+
+  let[@inline never] once backoff =
+    let t = Random.bits () in
+    let wait_log = get_wait_log backoff in
+    let wait_mask = (1 lsl wait_log) - 1 in
+    let t = ref (t land wait_mask land single_mask) in
+    while 0 <= !t do
+      Domain.cpu_relax ();
+      t := !t - 1
+    done;
+    let upper_wait_log = get_upper_wait_log backoff in
+    let wait_log = get_wait_log backoff in
+    let next_wait_log = wait_log + Bool.to_int (wait_log < upper_wait_log) in
+    backoff - wait_log + next_wait_log
+  ;;
+
+  let default = create ()
 end
 
 module Ephemeron = struct
@@ -191,6 +243,7 @@ module Obj = struct
   external magic_uncontended : 'a -> 'a = "%identity"
   external magic_unique : 'a -> 'a = "%identity"
   external magic_many : 'a -> 'a = "%identity"
+  external magic_unyielding : 'a -> 'a = "%identity"
   external magic_at_unique : 'a -> 'b = "%identity"
 
   module Extension_constructor = struct

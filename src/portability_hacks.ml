@@ -33,6 +33,8 @@ end
 external magic_portable__needs_base_and_core : 'a -> 'a = "%identity"
 external magic_uncontended__needs_base_and_core : 'a -> 'a = "%identity"
 external magic_portable__needs_portable_functors : 'a -> 'a = "%identity"
+external magic_portable__needs_mode_crossing_exns : exn -> exn = "%identity"
+external magic_uncontended__needs_mode_crossing_exns : exn -> exn = "%identity"
 external magic_uncontended__promise_deeply_immutable : 'a -> 'a = "%identity"
 external magic_portable__first_class_module : 'a -> 'a = "%identity"
 external magic_uncontended__first_class_module : 'a -> 'a = "%identity"

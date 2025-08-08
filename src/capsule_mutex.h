@@ -6,10 +6,17 @@
 
 #include <assert.h>
 #include <stdbool.h>
-#include <semaphore.h>
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+
+#ifdef __APPLE__
+#include <dispatch/dispatch.h>
+#define platform_sem_t dispatch_semaphore_t
+#else
+#include <semaphore.h>
+#define platform_sem_t sem_t
+#endif
 
 #include "caml/mlvalues.h"
 #include "caml/memory.h"
@@ -71,7 +78,7 @@ static bool capsule_fiber_descends_from(fiber_t parent) {
 }
 
 typedef struct {
-  sem_t sem;
+  platform_sem_t sem;
   /* ID of the fiber that has locked the mutex. FIBER_NONE if the mutex is unlocked. */
   _Atomic fiber_t owner;
 } * capsule_mutex;
@@ -81,6 +88,13 @@ typedef struct {
 
 Caml_inline int capsule_mutex_lock(capsule_mutex mut) {
 
+#ifdef __APPLE__
+  /* This only returns non-zero on timeout; don't need the other checks */
+  if (dispatch_semaphore_wait(mut->sem, DISPATCH_TIME_NOW) == MUTEX_SUCCESS) {
+    atomic_store_explicit(&mut->owner, capsule_fiber_current(), memory_order_relaxed);
+    return MUTEX_SUCCESS;
+  }
+#else
   if (sem_trywait(&mut->sem) == MUTEX_SUCCESS) {
     atomic_store_explicit(&mut->owner, capsule_fiber_current(), memory_order_relaxed);
     return MUTEX_SUCCESS;
@@ -89,6 +103,7 @@ Caml_inline int capsule_mutex_lock(capsule_mutex mut) {
   } else if (errno != EAGAIN) {
     return errno;
   }
+#endif
 
   if (capsule_fiber_descends_from(
           atomic_load_explicit(&mut->owner, memory_order_relaxed))) {
@@ -97,9 +112,18 @@ Caml_inline int capsule_mutex_lock(capsule_mutex mut) {
   }
 
   caml_enter_blocking_section();
+#ifdef __APPLE__
+  // No need to check return value, as we're not setting a timeout
+  dispatch_semaphore_wait(mut->sem, DISPATCH_TIME_FOREVER);
+#else
   int rc = sem_wait(&mut->sem);
+#endif
   caml_leave_blocking_section();
 
+#ifdef __APPLE__
+  atomic_store_explicit(&mut->owner, capsule_fiber_current(), memory_order_relaxed);
+  return MUTEX_SUCCESS;
+#else
   if (rc == MUTEX_SUCCESS) {
     atomic_store_explicit(&mut->owner, capsule_fiber_current(), memory_order_relaxed);
     return MUTEX_SUCCESS;
@@ -107,6 +131,7 @@ Caml_inline int capsule_mutex_lock(capsule_mutex mut) {
     return capsule_mutex_lock(mut);
   }
   return errno;
+#endif
 }
 
 Caml_inline int capsule_mutex_unlock(capsule_mutex mut) {
@@ -116,10 +141,15 @@ Caml_inline int capsule_mutex_unlock(capsule_mutex mut) {
     return EPERM;
   }
   atomic_store_explicit(&mut->owner, FIBER_NONE, memory_order_relaxed);
+#ifdef __APPLE__
+  dispatch_semaphore_signal(mut->sem);
+  return MUTEX_SUCCESS;
+#else
   if (sem_post(&mut->sem) == MUTEX_SUCCESS) {
     return MUTEX_SUCCESS;
   }
   return errno;
+#endif
 }
 
 Caml_inline int capsule_mutex_create(capsule_mutex *res) {
@@ -128,21 +158,36 @@ Caml_inline int capsule_mutex_create(capsule_mutex *res) {
     return ENOMEM;
   }
   atomic_store_explicit(&mut->owner, FIBER_NONE, memory_order_relaxed);
+#ifdef __APPLE__
+  mut->sem = dispatch_semaphore_create(1);
+  if (mut->sem == NULL) {
+    caml_stat_free(mut);
+    return ENOMEM;
+  }
+#else
   // 0 = thread-shared, 1 = initial value
   if (sem_init(&mut->sem, 0, 1) != MUTEX_SUCCESS) {
     caml_stat_free(mut);
     return errno;
   }
+#endif
   *res = mut;
   return MUTEX_SUCCESS;
 }
 
 Caml_inline int capsule_mutex_destroy(capsule_mutex mut) {
+#ifdef __APPLE__
+  dispatch_release(mut->sem);
+  caml_stat_free(mut);
+  return MUTEX_SUCCESS;
+#else
   if (sem_close(&mut->sem) == MUTEX_SUCCESS) {
     caml_stat_free(mut);
     return MUTEX_SUCCESS;
   }
+  caml_stat_free(mut);
   return errno;
+#endif
 }
 
 #endif /* CAML_INTERNALS */

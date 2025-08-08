@@ -56,6 +56,34 @@ module Atomic : sig
   end
 end
 
+module Backoff : sig
+  (** Type of backoff values. *)
+  type t [@@immediate]
+
+  (** Logarithm of the maximum allowed value for wait. *)
+  val max_wait_log : int
+
+  (** [create] creates a backoff value. [upper_wait_log], [lower_wait_log] override the
+      logarithmic upper and lower bound on the number of spins executed by {!once}. *)
+  val create : ?lower_wait_log:int -> ?upper_wait_log:int -> unit -> t
+
+  (** [default] is equivalent to [create ()]. *)
+  val default : t
+
+  (** [once b] executes one random wait and returns a new backoff with logarithm of the
+      current maximum value incremented unless it is already at [upper_wait_log] of [b].
+
+      Note that this uses the default Stdlib [Random] per-domain generator. *)
+  val once : t -> t
+
+  (** [reset b] returns a backoff equivalent to [b] except with current value set to the
+      [lower_wait_log] of [b]. *)
+  val reset : t -> t
+
+  (** [get_wait_log b] returns logarithm of the maximum value of wait for next {!once}. *)
+  val get_wait_log : t -> int
+end
+
 module Callback : sig
   module Safe : sig
     (** Like {!register}, but is safe to use in the presence of multiple domains. The
@@ -71,11 +99,16 @@ module Callback : sig
 end
 
 module Domain : sig
-  type 'a t := 'a Domain.t
+  (*_ Do not use a default modality for [Domain]; it uses unsafe implementations
+      internally, so each item should be considered and marked individually. *)
+
+  type id = private int
 
   (** If busy-waiting, calling cpu_relax () between iterations will improve performance on
       some CPU architectures. On runtime4, this is a noop. *)
   val cpu_relax : unit -> unit
+
+  val self : unit -> id
 
   module Safe : sig
     module DLS : sig
@@ -83,6 +116,8 @@ module Domain : sig
         type t
 
         val for_initial_domain : t
+        [@@ppx_js_style.allow_redundant_modalities
+          (*_ For emphasis that this should definitely be nonportable *)]
       end
 
       type 'a key = 'a Domain.DLS.key
@@ -90,6 +125,7 @@ module Domain : sig
       exception Encapsulated of string
 
       val access : (Access.t -> 'a) -> 'a
+      val access__local : (Access.t -> 'a) -> 'a
 
       val new_key'
         :  ?split_from_parent:('a -> Access.t -> 'a)
@@ -100,18 +136,6 @@ module Domain : sig
       val get : Access.t -> 'a key -> 'a
       val set : Access.t -> 'a key -> 'a -> unit
     end
-
-    val spawn : (unit -> 'a) -> 'a t
-    [@@alert
-      unsafe_parallelism
-        "This function is unsafe and should not be used in production code.\n\
-         A safe interface for parallelism is forthcoming."]
-
-    val spawn' : (DLS.Access.t -> 'a) -> 'a t
-    [@@alert
-      unsafe_parallelism
-        "This function is unsafe and should not be used in production code.\n\
-         A safe interface for parallelism is forthcoming."]
 
     val at_exit : (unit -> unit) -> unit
     val at_exit' : DLS.Access.t -> (unit -> unit) -> unit
@@ -276,6 +300,7 @@ module Obj : sig
   external magic_uncontended : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
   external magic_unique : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
   external magic_many : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
+  external magic_unyielding : 'a -> 'a = "%identity"
   external magic_at_unique : ('a[@local_opt]) -> ('b[@local_opt]) = "%identity"
 
   module Extension_constructor : sig

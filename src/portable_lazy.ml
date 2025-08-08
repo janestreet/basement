@@ -8,7 +8,7 @@ end = struct
   type id = int
 
   let equal_id = Int.equal
-  let cpu_relax = if Stdlib_shim.runtime5 () then Domain.cpu_relax else fun () -> ()
+  let cpu_relax = Stdlib_shim.Domain.cpu_relax
 
   let self =
     if Stdlib_shim.runtime5 () then fun () -> (Domain.self () :> id) else fun () -> 1

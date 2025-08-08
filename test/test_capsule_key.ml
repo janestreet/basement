@@ -64,8 +64,9 @@ let%expect_test "[with_password_local] destroys the key but returns a local valu
   let (P k) = Capsule.create () in
   let x, password =
     Capsule.Key.with_password_local k ~f:(fun password ->
-      ( Capsule.access_local ~password ~f:(fun access ->
-          Capsule.Data.wrap ~access (ref "Local value"))
+      ( (Capsule.access_local ~password ~f:(fun access ->
+           { aliased = Capsule.Data.wrap ~access (ref "Local value") }))
+          .aliased
       , password ))
   in
   (* We can still access the data through the password. *)

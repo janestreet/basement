@@ -57,22 +57,3 @@ let%expect_test "[get_initial] works in runtime4" =
   in
   [%expect {| |}]
 ;;
-
-let%expect_test ("[get_initial] works in runtime5"
-  [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
-  let () =
-    Capsule.get_initial Stdlib_shim.Domain.Safe.DLS.Access.for_initial_domain
-    |> ignore_initial_access
-    |> Expect_test_helpers_base.require_some
-  in
-  [%expect {| |}];
-  let () =
-    (Stdlib_shim.Domain.Safe.spawn [@alert "-unsafe_parallelism"]) (fun () ->
-      Stdlib_shim.Domain.Safe.DLS.access (fun access ->
-        (Capsule.get_initial access |> ignore_initial_access) [@nontail]))
-    |> Domain.join
-    |> Expect_test_helpers_base.require_none [%sexp_of: unit]
-  in
-  [%expect {| |}]
-;;
