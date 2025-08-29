@@ -578,6 +578,12 @@ module Data : sig
     (** Like [unwrap], but for unique values. *)
     val unwrap_unique : access:'k Access.t -> ('a, 'k) t -> 'a
 
+    (** Like [wrap], but for once values. *)
+    val wrap_once : access:'k Access.t -> 'a -> ('a, 'k) t
+
+    (** Like [unwrap], but for once values. *)
+    val unwrap_once : access:'k Access.t -> ('a, 'k) t -> 'a
+
     (** [unwrap_shared ~access t] returns the shared value of [t], which lives in the
         capsule ['k]. ['k] is always the current capsule. Since ['a] may have been shared
         with other domains, ['a] must cross portability. *)

@@ -15,21 +15,27 @@ let%expect_test "signal" =
   let go = Capsule.Data.create (fun () -> ref true) in
   let wait = Atomic.make true in
   let going = Atomic.make true in
-  Multicore.spawn (fun () ->
-    Capsule.Mutex.with_key mutex ~f:(fun key ->
-      Atomic.Contended.set wait false;
-      let rec loop key =
-        let res, key =
-          Capsule.Key.access key ~f:(fun access -> !(Capsule.Data.unwrap ~access go))
-        in
-        match res with
-        | true ->
-          let key = Capsule.Condition.wait cond ~mutex key in
-          loop key
-        | false -> key
-      in
-      (), loop key);
-    Atomic.Contended.set going false);
+  (match
+     Multicore.spawn
+       (fun () ->
+         Capsule.Mutex.with_key mutex ~f:(fun key ->
+           Atomic.Contended.set wait false;
+           let rec loop key =
+             let res, key =
+               Capsule.Key.access key ~f:(fun access -> !(Capsule.Data.unwrap ~access go))
+             in
+             match res with
+             | true ->
+               let key = Capsule.Condition.wait cond ~mutex key in
+               loop key
+             | false -> key
+           in
+           (), loop key);
+         Atomic.Contended.set going false)
+       ()
+   with
+   | Spawned -> ()
+   | Failed ((), exn, bt) -> Exn.raise_with_original_backtrace exn bt);
   while Atomic.get wait do
     cpu_relax ()
   done;
@@ -49,21 +55,28 @@ let%expect_test "broadcast" =
   let ready = Atomic.make 0 in
   let finished = Atomic.make 0 in
   for _ = 1 to 4 do
-    Multicore.spawn (fun () ->
-      Capsule.Mutex.with_key mutex ~f:(fun key ->
-        Atomic.incr ready;
-        let rec loop key =
-          let res, key =
-            Capsule.Key.access key ~f:(fun access -> !(Capsule.Data.unwrap ~access go))
-          in
-          match res with
-          | true ->
-            let key = Capsule.Condition.wait cond ~mutex key in
-            loop key
-          | false -> key
-        in
-        (), loop key);
-      Atomic.incr finished)
+    match
+      Multicore.spawn
+        (fun () ->
+          Capsule.Mutex.with_key mutex ~f:(fun key ->
+            Atomic.incr ready;
+            let rec loop key =
+              let res, key =
+                Capsule.Key.access key ~f:(fun access ->
+                  !(Capsule.Data.unwrap ~access go))
+              in
+              match res with
+              | true ->
+                let key = Capsule.Condition.wait cond ~mutex key in
+                loop key
+              | false -> key
+            in
+            (), loop key);
+          Atomic.incr finished)
+        ()
+    with
+    | Spawned -> ()
+    | Failed ((), exn, bt) -> Exn.raise_with_original_backtrace exn bt
   done;
   while Atomic.get ready < 4 do
     cpu_relax ()
@@ -95,16 +108,22 @@ let%expect_test "mutex poisoned during condition wait" =
   let poisoned = Atomic.make false in
   let ready = Atomic.make false in
   let going = Atomic.make true in
-  Multicore.spawn (fun () ->
-    (try
-       Capsule.Mutex.with_key mutex ~f:(fun key ->
-         Atomic.Contended.set ready true;
-         (* Raises [poisoned] after waiting. *)
-         let key = Capsule.Condition.wait cond ~mutex key in
-         Capsule.Key.access key ~f:(fun _ : unit -> failwith "can't reach this"))
-     with
-     | Capsule.Mutex.Poisoned -> Atomic.Contended.set poisoned true);
-    Atomic.Contended.set going false);
+  (match
+     Multicore.spawn
+       (fun () ->
+         (try
+            Capsule.Mutex.with_key mutex ~f:(fun key ->
+              Atomic.Contended.set ready true;
+              (* Raises [poisoned] after waiting. *)
+              let key = Capsule.Condition.wait cond ~mutex key in
+              Capsule.Key.access key ~f:(fun _ : unit -> failwith "can't reach this"))
+          with
+          | Capsule.Mutex.Poisoned -> Atomic.Contended.set poisoned true);
+         Atomic.Contended.set going false)
+       ()
+   with
+   | Spawned -> ()
+   | Failed ((), exn, bt) -> Exn.raise_with_original_backtrace exn bt);
   while not (Atomic.get ready) do
     cpu_relax ()
   done;

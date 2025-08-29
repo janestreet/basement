@@ -11,10 +11,16 @@ let%expect_test "if multiple threads force at the same time, the lazy still alwa
   let barrier = Barrier.create nthreads in
   let count = Stdlib.Atomic.make 0 in
   for _ = 1 to nthreads do
-    Multicore.spawn (fun () ->
-      Barrier.await barrier;
-      Portable_atomic.incr (Portable_lazy.force t);
-      Stdlib.Atomic.incr count)
+    match
+      Multicore.spawn
+        (fun () ->
+          Barrier.await barrier;
+          Portable_atomic.incr (Portable_lazy.force t);
+          Stdlib.Atomic.incr count)
+        ()
+    with
+    | Spawned -> ()
+    | Failed ((), exn, bt) -> Exn.raise_with_original_backtrace exn bt
   done;
   while Stdlib.Atomic.get count < nthreads do
     Stdlib_shim.Domain.cpu_relax ()
@@ -31,10 +37,16 @@ let%expect_test "if multiple threads force at the same time, the thunk is only c
   let barrier = Barrier.create nthreads in
   let count = Stdlib.Atomic.make 0 in
   for _ = 1 to nthreads do
-    Multicore.spawn (fun () ->
-      Barrier.await barrier;
-      Portable_lazy.force t;
-      Stdlib.Atomic.incr count)
+    match
+      Multicore.spawn
+        (fun () ->
+          Barrier.await barrier;
+          Portable_lazy.force t;
+          Stdlib.Atomic.incr count)
+        ()
+    with
+    | Spawned -> ()
+    | Failed ((), exn, bt) -> Exn.raise_with_original_backtrace exn bt
   done;
   while Stdlib.Atomic.get count < nthreads do
     Stdlib_shim.Domain.cpu_relax ()

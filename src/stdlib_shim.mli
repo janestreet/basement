@@ -10,7 +10,7 @@ external runtime5 : unit -> bool = "caml_is_runtime5_stub"
 (** Like {!ignore}, but takes a [contended] value. This is technically strictly stronger
     than [ignore], but changing [ignore] in place causes backwards compatibility issues
     due to type inference. *)
-external ignore_contended : 'a -> unit = "%ignore"
+external ignore_contended : 'a. 'a -> unit = "%ignore"
 
 external raise : exn -> 'a = "%reraise"
 external raise_notrace : exn -> 'a = "%raise_notrace"
@@ -26,7 +26,14 @@ module Atomic : sig
     external set : 'a t -> 'a -> unit = "caml_atomic_set_stub"
     external exchange : 'a t -> 'a -> 'a = "%atomic_exchange"
     external compare_and_set : 'a t -> 'a -> 'a -> bool = "%atomic_cas"
-    external compare_exchange : 'a t -> 'a -> 'a -> 'a = "caml_atomic_compare_exchange_stub"
+
+    external compare_exchange
+      :  'a t
+      -> 'a
+      -> 'a
+      -> 'a
+      = "caml_atomic_compare_exchange_stub"
+
     external fetch_and_add : int t -> int -> int = "%atomic_fetch_add"
     external add : int t -> int -> unit = "caml_atomic_add_stub"
     external sub : int t -> int -> unit = "caml_atomic_sub_stub"
@@ -42,7 +49,11 @@ module Atomic : sig
     external set : 'a. 'a t -> 'a -> unit = "caml_atomic_set_stub"
     external exchange : 'a. 'a t -> 'a -> 'a = "%atomic_exchange"
     external compare_and_set : 'a. 'a t -> 'a -> 'a -> bool = "%atomic_cas"
-    external compare_exchange : 'a. 'a t -> 'a -> 'a -> 'a = "caml_atomic_compare_exchange_stub"
+
+    external compare_exchange
+      : 'a.
+      'a t -> 'a -> 'a -> 'a
+      = "caml_atomic_compare_exchange_stub"
   end
 
   module Expert : sig
