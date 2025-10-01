@@ -1,95 +1,102 @@
-module Domain = struct
-  include Domain
-  include Stdlib_shim.Domain.Safe
+include Dynamic_intf
+
+module Fiber_dynamic : Dynamic = struct
+  (* Stacks are represented as tagged pointers, so do not keep the fiber alive.
+     We must not enter the GC between the creation and use of a [stack]. *)
+  type (-'a, +'b) stack : immediate
+  type last_fiber : immediate
+  type (-'a, +'b) cont
+
+  (** Interface to Dynamic implemented in the runtime. The runtime implementation of
+      [Dynamic.set_root] sets the per-domain root value, but we want the root value to be
+      global, so we wrap the runtime version in our own version with a global atomic for
+      the root value. *)
+  module Runtime_dynamic = struct
+    type ('a : value_or_null) t : value mod contended portable
+
+    external reperform
+      :  'a Stdlib.Effect.t
+      -> ('a, 'b) cont @ unique
+      -> last_fiber
+      -> 'b @ unique
+      @@ portable
+      = "%reperform"
+
+    module Must_not_enter_gc = struct
+      external alloc_stack_dyn
+        : 'a 'b 'c ('d : value_or_null mod contended).
+        ('a -> 'b)
+        -> (exn -> 'b)
+        -> ('c Effect.t -> ('c, 'b) cont @ unique -> last_fiber -> 'b @ unique)
+        -> 'd t
+        -> 'd @ portable
+        -> ('a, 'b) stack
+        @@ portable
+        = "basement_alloc_stack_bind"
+
+      external runstack
+        :  ('a, 'b) stack
+        -> ('c -> 'a) @ once
+        -> 'c
+        -> 'b @ unique
+        @@ portable
+        = "%runstack"
+
+      (* Allocate a stack and immediately run [f x] on it with [d] bound to [v].
+         We must not enter the GC between [alloc_stack_dyn] and [runstack].
+         [with_stack_dyn] is marked as [@inline never] to avoid reordering. *)
+      let[@inline never] with_stack_dyn valuec exnc effc d v f x =
+        runstack (alloc_stack_dyn valuec exnc effc d v) f x
+      ;;
+    end
+
+    external make
+      : ('a : value_or_null mod contended).
+      'a @ portable -> 'a t
+      @@ portable
+      = "basement_dynamic_make"
+
+    external get
+      : ('a : value_or_null mod contended).
+      'a t -> 'a @ portable
+      @@ portable
+      = "basement_dynamic_get"
+
+    let with_temporarily d v ~f =
+      let effc eff k last_fiber = reperform eff k last_fiber in
+      Must_not_enter_gc.with_stack_dyn (fun x -> x) (fun e -> raise e) effc d v f ()
+    ;;
+  end
+
+  type 'a inner =
+    { mutable root : 'a Modes.Portable.t [@atomic]
+    ; current : 'a or_null Runtime_dynamic.t
+    }
+
+  type 'a t = 'a inner Modes.Contended.t
+
+  let make a : _ t =
+    { contended = { root = { portable = a }; current = Runtime_dynamic.make Null } }
+  ;;
+
+  let set_root (type a : value mod contended) (t : a t) v =
+    Atomic.Loc.set [%atomic.loc t.contended.root] { portable = v }
+  ;;
+
+  let get (t : _ t) =
+    match Runtime_dynamic.get t.contended.current with
+    | This r -> r
+    | Null -> (Atomic.Loc.get [%atomic.loc t.contended.root]).portable
+  ;;
+
+  let with_temporarily (t : _ t) v ~f =
+    Runtime_dynamic.with_temporarily t.contended.current (This v) ~f
+  ;;
 end
 
-(* NOTE: This module contains a "stub" implementation of dynamically scoped variables,
-   intended as a safe stop-gap until we add support for native dynamic scoping in the
-   runtime. It is currently unsafe to use this module in the presence of fibers. *)
+external dynamic_supported : unit -> bool = "basement_dynamic_supported"
 
-(** [Cell.t] is an abstraction over a mutable cell (backed by an atomic) with simple
-    permissioning. This makes it a little easier to understand how the fields of
-    [Dynamic.t] are used, which can otherwise be a bit confusing due to an optimization
-    described below. *)
-module Cell : sig @@ portable
-  type ('a, +'perm) t : value mod contended portable
-
-  val make : ('a : value mod contended). 'a @ portable -> ('a, [< `read | `write ]) t
-  val make_readonly : ('a : value mod contended). 'a @ portable -> ('a, [< `read ]) t
-  val get : ('a : value mod contended). ('a, [> `read ]) t -> 'a @ portable
-  val set : ('a : value mod contended). ('a, [> `write ]) t -> 'a @ portable -> unit
-end = struct
-  type ('a, +_) t = 'a Portable_atomic.t
-
-  let[@inline] make x = Portable_atomic.make x
-  let[@inline] make_readonly x = make x
-  let[@inline] get t = Portable_atomic.get t
-  let[@inline] set t x = Portable_atomic.set t x
-end
-
-(** A ['a t] represents a dynamically scoped variable.
-
-    Conceptually, this could just be
-    {[
-      type 'a t =
-        { root : 'a Modes.Portable.t Atomic.t
-        ; current : 'a Modes.Portable.t option Domain.DLS.key
-        }
-    ]}
-    where the current value is [v] when [current = Some v], and [root] otherwise. This
-    requires a conditional jump, though, which we avoid by having [current] be an alias
-    for [root] rather than [None]. *)
-type 'a t : value mod contended portable =
-  { root : ('a, [ `write ]) Cell.t
-  (** The default value when not inside a [with_temporarily]. This is shared by all
-      domains and can be set at any time. *)
-  ; current : ('a, [ `read ]) Cell.t Domain.DLS.key
-  (** The value of the dynamic variable for the current domain (conceptually, fiber).
-      Inside the scope of a [with_temporarily], [current] is set to a constant [Cell.t];
-      outside the scope of all [with_temporarily]'s, [current] is an alias for [root]. *)
-  }
-[@@unsafe_allow_any_mode_crossing
-  "TODO: illegal mode crossing on the current version of the compiler, but should be \
-   legal."]
-
-let make x =
-  let root = Cell.make x in
-  let current =
-    Domain.DLS.new_key
-      (fun () ->
-        (* Any already-existing domains are initialized to point at [root]. *)
-        root)
-      ~split_from_parent:(fun (current : _ Cell.t) () ->
-        (* If the dynamic is currently explicitly set by the user, then we want to
-           preserve that set when we split. If it hasn't been set by the user, then
-           [current] is just [root]. *)
-        current)
-  in
-  { root; current }
-;;
-
-let get t = Domain.DLS.access (fun access -> Domain.DLS.get access t.current) |> Cell.get
-let set_root t x = Cell.set t.root x
-
-let with_temporarily t x ~f =
-  let new_cell = Cell.make_readonly x in
-  let restore_to =
-    (* Set the [current] DLS value to [new_cell], and return the previous cell. *)
-    Domain.DLS.access (fun access ->
-      let restore_to = Domain.DLS.get access t.current in
-      Domain.DLS.set access t.current new_cell;
-      restore_to)
-  in
-  let local_ restore () =
-    (* Set the [current] DLS value back to [restore_to]. *)
-    Domain.DLS.access (fun access -> Domain.DLS.set access t.current restore_to)
-  in
-  match f () with
-  | res ->
-    restore ();
-    res
-  | exception exn ->
-    let bt = Stdlib.Printexc.get_raw_backtrace () in
-    restore ();
-    Stdlib.Printexc.raise_with_backtrace exn bt
-;;
+include
+  (val if dynamic_supported ()
+       then (module Fiber_dynamic : Dynamic)
+       else (module Non_fiber_dynamic : Dynamic))

@@ -16,7 +16,7 @@
 #include "caml/mlvalues.h"
 #include "caml/memory.h"
 
-#include "capsule_mutex.h"
+#include "blocking_mutex.h"
 
 #ifdef __APPLE__
 #include <pthread.h>
@@ -24,15 +24,15 @@ typedef struct {
   _Atomic uint64_t counter;
   pthread_mutex_t mut;
   pthread_cond_t cond;
-} * capsule_condition;
+} * blocking_condition;
 #else
 #include <linux/futex.h>
 #include <sys/syscall.h>
 typedef struct {
   _Atomic uint64_t counter;
-} * capsule_condition;
+} * blocking_condition;
 #endif
-#define Condition_val(v) (*((capsule_condition *)Data_custom_val(v)))
+#define Condition_val(v) (*((blocking_condition *)Data_custom_val(v)))
 
 #define CONDITION_SUCCESS 0
 
@@ -44,7 +44,7 @@ static void check_fatal_error(int err, const char *msg) {
   }
 }
 
-Caml_inline int capsule_condition_signal(capsule_condition cond) {
+Caml_inline int blocking_condition_signal(blocking_condition cond) {
   atomic_fetch_add(&cond->counter, 1);
 #ifdef __APPLE__
   check_fatal_error(pthread_mutex_lock(&cond->mut), "Failed to acquire futex lock");
@@ -59,7 +59,7 @@ Caml_inline int capsule_condition_signal(capsule_condition cond) {
 #endif
 }
 
-Caml_inline int capsule_condition_broadcast(capsule_condition cond) {
+Caml_inline int blocking_condition_broadcast(blocking_condition cond) {
   atomic_fetch_add(&cond->counter, 1);
 #ifdef __APPLE__
   check_fatal_error(pthread_mutex_lock(&cond->mut), "Failed to acquire futex lock");
@@ -75,14 +75,13 @@ Caml_inline int capsule_condition_broadcast(capsule_condition cond) {
 #endif
 }
 
-Caml_inline int capsule_condition_wait(capsule_condition cond, capsule_mutex mut) {
+Caml_inline int blocking_condition_wait(blocking_condition cond, blocking_mutex mut) {
   // Save and restore owner, as the current fiber may be a descendant.
   uint64_t old_count = atomic_load(&cond->counter);
-  fiber_t owner = atomic_load_explicit(&mut->owner, memory_order_relaxed);
 
   // If the mutex operations fail, the condition is in an inconsistent state and it's not
   // safe to return to OCaml.
-  check_fatal_error(capsule_mutex_unlock(mut), "Failed to release mutex");
+  check_fatal_error(blocking_mutex_unlock(mut), "Failed to release mutex");
 
   caml_enter_blocking_section();
 #ifdef __APPLE__
@@ -100,8 +99,7 @@ Caml_inline int capsule_condition_wait(capsule_condition cond, capsule_mutex mut
   // Re-aquire the domain lock to avoid blocking other domains on our systhreads
   caml_leave_blocking_section();
 
-  check_fatal_error(capsule_mutex_lock(mut), "Failed to re-acquire mutex");
-  atomic_store_explicit(&mut->owner, owner, memory_order_relaxed);
+  check_fatal_error(blocking_mutex_lock(mut), "Failed to re-acquire mutex");
 
 #ifdef __APPLE__
   return rc;
@@ -113,8 +111,8 @@ Caml_inline int capsule_condition_wait(capsule_condition cond, capsule_mutex mut
 #endif
 }
 
-Caml_inline int capsule_condition_create(capsule_condition *res) {
-  capsule_condition cond = caml_stat_alloc_noexc(sizeof(*cond));
+Caml_inline int blocking_condition_create(blocking_condition *res) {
+  blocking_condition cond = caml_stat_alloc_noexc(sizeof(*cond));
   if (cond == NULL) {
     return ENOMEM;
   }
@@ -127,7 +125,7 @@ Caml_inline int capsule_condition_create(capsule_condition *res) {
   return CONDITION_SUCCESS;
 }
 
-Caml_inline int capsule_condition_destroy(capsule_condition cond) {
+Caml_inline int blocking_condition_destroy(blocking_condition cond) {
 #ifdef __APPLE__
   pthread_cond_destroy(&cond->cond);
   pthread_mutex_destroy(&cond->mut);

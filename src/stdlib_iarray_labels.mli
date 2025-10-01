@@ -7,9 +7,9 @@
     copying API to replace the in-place one. *)
 
 (** An alias for the type of immutable arrays. *)
-type +'a t = 'a iarray
+type (+'a : any mod separable) t = 'a iarray
 
-external unsafe_of_array : 'a array -> 'a iarray @@ portable = "%array_to_iarray"
+external unsafe_of_array : 'a array -> 'a iarray = "%array_to_iarray"
 
 (** Return the length (number of elements) of the given immutable array. *)
 external length : local_ 'a iarray -> int = "%array_length"

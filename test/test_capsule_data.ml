@@ -1,5 +1,6 @@
 open! Base
 open Basement
+open Blocking_sync [@@alert "-deprecated"]
 open Expect_test_helpers_base
 
 type 'a myref = { mutable v : 'a }
@@ -22,19 +23,19 @@ let write_ref : ('a : value mod contended portable). 'a -> ('a myref -> unit) @ 
   fun v r -> r.v <- v
 ;;
 
-type 'a guarded = Mk : 'k Capsule.Mutex.t * ('a, 'k) Capsule.Data.t -> 'a guarded
+type 'a guarded = Mk : 'k Mutex.t * ('a, 'k) Capsule.Data.t -> 'a guarded
 
 type ('a, 'b) func =
   { f : 'k. 'k Capsule.Password.t @ local -> ('a, 'k) Capsule.Data.t -> 'b }
 
 let with_guarded x (f : ('a, 'b) func) =
   let (Mk (m, p)) = x in
-  (Capsule.Mutex.with_lock m ~f:(fun k -> { aliased = f.f k p })).aliased
+  (Mutex.with_lock m ~f:(fun k -> { aliased = f.f k p })).aliased
 ;;
 
 let ptr =
   let (P k) = Capsule.create () in
-  let m = Capsule.Mutex.create k in
+  let m = Mutex.create k in
   Mk (m, Capsule.Data.create (fun () -> mk_ref 42))
 ;;
 
@@ -49,6 +50,13 @@ let%expect_test "[Data.create] and [extract]" =
     }
 ;;
 
+let%expect_test "[Data.create_once]" =
+  let f_c = Capsule.Data.create_once (fun () () -> print_endline "once") in
+  let f = Capsule.Data.unwrap_once ~access:Capsule.(Access.unbox initial) f_c in
+  f ();
+  [%expect {| once |}]
+;;
+
 let ptr' =
   let (Mk (m, _p)) = ptr in
   Mk (m, Capsule.Data.create (fun () -> mk_ref 2))
@@ -57,7 +65,7 @@ let ptr' =
 let _ptr'' =
   let (Mk (m, p)) = ptr in
   let p' =
-    (Capsule.Mutex.with_lock m ~f:(fun password ->
+    (Mutex.with_lock m ~f:(fun password ->
        Capsule.access ~password ~f:(fun access ->
          let x = Capsule.Data.unwrap ~access p in
          x.v <- 45;
@@ -99,7 +107,7 @@ let%expect_test "Other capsules unaffected by modifications" =
 let ptr2 () =
   let (Mk (m, p)) = ptr in
   let p' =
-    (Capsule.Mutex.with_lock m ~f:(fun password ->
+    (Mutex.with_lock m ~f:(fun password ->
        { many = { aliased = Capsule.Data.map ~password ~f:(fun _ -> mk_ref 3) p } }))
       .many
       .aliased
@@ -119,7 +127,7 @@ let%expect_test "[map], [both], [fst], [snd]" =
 
 let%expect_test "[Capsule.Key.destroy]" =
   let (Mk (m, p)) = ptr2 () in
-  let access = Capsule.Key.destroy (Capsule.Mutex.destroy m) in
+  let access = Capsule.Key.destroy (Mutex.destroy m) in
   let r1, r2 = Capsule.Data.unwrap ~access p in
   [%test_result: int] (read_ref r1).aliased ~expect:15;
   [%test_result: int] (read_ref r2).aliased ~expect:3
@@ -127,17 +135,17 @@ let%expect_test "[Capsule.Key.destroy]" =
 
 let%expect_test "[Mutex] operations on poisoned mutex raise [Poisoned]" =
   require_does_raise (fun () -> with_guarded ptr { f = (fun _ _ -> ()) });
-  [%expect {| (Basement__Capsule.Mutex.Poisoned) |}]
+  [%expect {| (Basement__Blocking_sync.Mutex.Poisoned) |}]
 ;;
 
 let%expect_test "[Mutex] operations on poisoned mutex raise [Poisoned]" =
   require_does_raise (fun () -> with_guarded ptr' { f = (fun _ _ -> ()) });
-  [%expect {| (Basement__Capsule.Mutex.Poisoned) |}]
+  [%expect {| (Basement__Blocking_sync.Mutex.Poisoned) |}]
 ;;
 
 let%expect_test "[Mutex] operations on poisoned mutex raise [Poisoned]" =
   require_does_raise (fun () -> with_guarded (ptr2 ()) { f = (fun _ _ -> ()) });
-  [%expect {| (Basement__Capsule.Mutex.Poisoned) |}]
+  [%expect {| (Basement__Blocking_sync.Mutex.Poisoned) |}]
 ;;
 
 let%expect_test "[Data.inject] and [Data.project]" =
@@ -151,9 +159,9 @@ type lost_capsule = |
 
 let ptr' : (int, lost_capsule) Capsule.Data.t =
   let (P k) = Capsule.create () in
-  let m = Capsule.Mutex.create k in
+  let m = Mutex.create k in
   let ptr = Capsule.Data.inject 100 in
-  (Capsule.Mutex.with_lock m ~f:(fun password ->
+  (Mutex.with_lock m ~f:(fun password ->
      { many =
          { aliased =
              Capsule.Data.bind ptr ~password ~f:(fun x ->

@@ -3,34 +3,41 @@
 (** This module is reexported, with documentation, as [Base.Portable_lazy]; see that
     module for documentation this interface. *)
 
-type 'a t : value mod contended portable
+type (+'a : value_or_null) t : value mod contended portable
 
-val from_val : 'a @ contended portable -> 'a t
-val from_fun : (unit -> 'a @ contended portable) @ once portable -> 'a t
-val from_fun_fixed : ('a t -> 'a @ contended portable) @ once portable -> 'a t
+val from_val : ('a : value_or_null). 'a @ contended portable -> 'a t
 
-exception Undefined
+val from_fun
+  : ('a : value_or_null).
+  (unit -> 'a @ contended portable) @ once portable -> 'a t
 
-val force : 'a t -> 'a @ contended portable
+val from_fun_fixed
+  : ('a : value_or_null).
+  ('a t -> 'a @ contended portable) @ once portable -> 'a t
+
+val force : ('a : value_or_null). 'a t @ local -> 'a @ contended portable
 
 val map
-  :  'a t
-  -> f:('a @ contended portable -> 'b @ contended portable) @ once portable
-  -> 'b t
+  : ('a : value_or_null) ('b : value_or_null).
+  'a t -> f:('a @ contended portable -> 'b @ contended portable) @ once portable -> 'b t
 
-val bind : 'a t -> f:('a @ contended portable -> 'b t) @ once portable -> 'b t
-val compare : ('a : value mod contended). ('a -> 'a -> int) -> 'a t -> 'a t -> int
+val bind
+  : ('a : value_or_null) ('b : value_or_null).
+  'a t -> f:('a @ contended portable -> 'b t) @ once portable -> 'b t
+
+val compare : ('a : value_or_null mod contended). ('a -> 'a -> int) -> 'a t -> 'a t -> int
 
 val compare__local
-  : ('a : value mod contended).
+  : ('a : value_or_null mod contended).
   ('a @ local -> 'a @ local -> int) -> 'a t @ local -> 'a t @ local -> int
 
-val equal : ('a : value mod contended). ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
+val equal : ('a : value_or_null mod contended). ('a -> 'a -> bool) -> 'a t -> 'a t -> bool
 
 val equal__local
-  : ('a : value mod contended).
+  : ('a : value_or_null mod contended).
   ('a @ local -> 'a @ local -> bool) -> 'a t @ local -> 'a t @ local -> bool
 
-val globalize : _ -> 'a t @ local -> 'a t
-val is_val : 'a t -> bool
-val peek : 'a t -> 'a option @ contended portable
+val globalize : ('a : value_or_null) ('b : value_or_null). 'b -> 'a t @ local -> 'a t
+val is_val : ('a : value_or_null). 'a t -> bool
+val peek : ('a : value). 'a t -> 'a Or_null_shim.t @ contended portable
+val peek_opt : ('a : value_or_null). 'a t -> 'a option @ contended portable

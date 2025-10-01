@@ -1,19 +1,18 @@
 (** Capsules are a mechanism for safely having [uncontended] access to mutable data from
-    multiple domains. The interface in this module ensures that only one domain can have
+    multiple threads. The interface in this module ensures that only one thread can have
     [uncontended] access to that data at a time.
 
     We consider every piece of mutable data in the program to live inside of some capsule.
     This might be an explicit capsule created by the user using this interface, or an
-    implicit capsule created when a new domain is started. Whenever some thread is
+    implicit capsule created when a new thread is started. Whenever some thread is
     executing a function it has uncontended access to a single capsule and any new mutable
     data it creates is created within that capsule. We say that the function is "running
     within" the capsule.
 
-    Capsules are only ever associated with threads from one domain at a time, which
-    ensures there are no data races in the program. The implicit capsules created when a
-    new domain is started are only ever associated with threads in that domain. Explicit
-    capsules can change which domains have uncontended access to them using
-    synchronization primitives.
+    Capsules are only ever associated with one thread at a time, which ensures there are
+    no data races in the program. The implicit capsules created when a new thread is
+    started are only ever associated with that thread. Explicit capsules can change which
+    threads have uncontended access to them using synchronization primitives.
 
     Each explicit capsule is associated with a type "brand" -- written ['k] throughout
     this interface -- which allows us to statically reason about access to the capsule
@@ -26,15 +25,13 @@
     access the capsule. This ensures that mutable data is only ever accessed in accordance
     with the capsule's concurrency rules.
 
-    A ['k Key.t @ unique] can be consumed to create a ['k Mutex.t] or a ['k Rwlock.t] that
-    allows dynamic access to the same capsule from different threads. Mutexes support
-    exclusive write access from one thread, while rw-locks support either write access
-    from one thread or read access from multiple. Both mutexes and rw-locks can be
-    destroyed to get the ['k Key.t @ unique] back.
-
     Using a ['k Key.t] more than once turns it into an [aliased] key. Aliased global keys
     indicate that the corresponding capsule has been permanently shared across threads
     with read-only access.
+
+    This module only provides interfaces that statically rule out data races. The [Await]
+    library augments capsules with various synchronization primitives that prevent races
+    at runtime.
 
     {1 Exceptions}
 
@@ -51,15 +48,21 @@ module Access : sig
   (** ['k t] represents access to the current capsule, allowing wrapping and unwrapping
       [Data.t] values. An [uncontended] ['k t] indicates that ['k] is the current capsule.
       A [shared] ['k t] indicates that ['k] is the current capsule but that it may be
-      shared with other domains.
+      shared with other threads.
 
       ['k t]s captured in a [portable] closure become [contended], which prevents sharing
-      them with other domains. *)
-  type 'k t : value mod external_ global many portable unique
+      them with other threads. *)
+  type 'k t : void mod aliased external_ global many portable
 
   (** [packed] is the type of access to some unknown capsule. Unpacking one provides a
       ['k t] together with a fresh existential type brand for ['k]. *)
   type packed = P : 'k t -> packed [@@unboxed]
+
+  (** A boxed version of [Access.t] for places where you need a type with layout [value]. *)
+  type 'k boxed : value mod aliased external_ global many portable
+
+  val box : 'k t -> 'k boxed @@ portable
+  val unbox : 'k boxed -> 'k t @@ portable
 
   (** [equality_witness a b] returns a witness that the brands of [a] and [b] are equal.
       This must be true since they are both present uncontended within the same capsule. *)
@@ -74,47 +77,62 @@ val current : unit -> Access.packed @@ portable
 type initial
 
 (** An [Access.t] for the initial capsule *)
-val initial : initial Access.t
+val initial : initial Access.boxed
 
-(** Dynamically get an [Access.t] for the initial capsule within a portable context. This
-    function requires a [DLS.Access.t] to ensure that the current capsule is a domain
-    capsule, and returns [None] if the current domain is not the initial domain. *)
-val get_initial
-  :  Stdlib_shim.Domain.Safe.DLS.Access.t
-  -> initial Access.t option @ local
+(** [access_initial ~f] calls [f (This initial)] if run on the initial thread, or [f Null]
+    otherwise. *)
+val access_initial
+  :  (initial Access.boxed option @ local -> 'a @ contended local portable unique)
+     @ local once portable unyielding
+  -> 'a @ contended local portable unique
   @@ portable
 
 (** Passwords represent permission to get access to a capsule. *)
 module Password : sig
-  (** ['k t] is the type of "passwords" representing permission for the current domain to
-      have [uncontended] access to the capsule ['k]. They are only ever avilable locally,
-      so cannot move between domains.
+  (** ['k t] is the type of "passwords" representing permission for the current thread to
+      have [uncontended] access to the capsule ['k]. They are only ever available locally,
+      so cannot move between threads.
 
       Obtaining a ['k t] requires exclusive access to ['k], either through a
       ['k Key.t @ unique] or indirectly through acquiring a mutex or rw-lock associated
       with ['k]. The mode system prevents retaining the ['k t] after releasing access to
       the capsule. This guarantees that uncontended access to the capsule is only granted
-      to one domain at a time. *)
-  type 'k t : value mod contended external_ portable
+      to one thread at a time. *)
+  type 'k t : void mod contended external_ portable
+
+  (** A boxed version of [Password.t] for places where you need a type with layout
+      [value]. *)
+  type 'k boxed : value mod contended external_ portable
+
+  val box : 'k t @ local -> 'k boxed @ local @@ portable
+  val unbox : 'k boxed @ local -> 'k t @ local @@ portable
 
   (** Shared passwords represent permission to get shared access to a capsule. *)
   module Shared : sig
     (** ['k t] is the type of "shared passwords" representing permission for the current
-        domain to have [shared] access to the capsule ['k]. They are only ever avilable
-        locally, and so cannot move between domains.
+        thread to have [shared] access to the capsule ['k]. They are only ever available
+        locally, and so cannot move between threads.
 
         Obtaining a ['k t] requires a ['k Key.t @ aliased] or read-acquiring the
         reader-writer lock associated with ['k]. *)
-    type 'k t : value mod contended external_ portable
+    type 'k t : void mod contended external_ portable
+
+    (** A boxed version of [Password.Shared.t] for places where you need a type with
+        layout [value]. *)
+    type 'k boxed : value mod contended external_ portable
+
+    val box : 'k t @ local -> 'k boxed @ local @@ portable
+    val unbox : 'k boxed @ local -> 'k t @ local @@ portable
 
     (** [borrow t f] calls [f] with the shared password [t] upgraded to unyielding. The
         function [f] is itself unyielding, so cannot close over passwords. This allows the
         borrowed password to be safely closed over in local parallel tasks, which receive
         temporary read-only access to the capsule. *)
     val borrow
-      :  'k t @ local
-      -> ('k t @ local unyielding -> 'a) @ local once unyielding
-      -> 'a
+      : ('a : value_or_null) 'k.
+      'k t @ local
+      -> ('k t @ local unyielding -> 'a @ local unique) @ local once unyielding
+      -> 'a @ local unique
       @@ portable
   end
 
@@ -122,21 +140,38 @@ module Password : sig
   val shared : 'k t @ local -> 'k Shared.t @ local @@ portable
 
   (** [with_current k f] calls [f] with a password for the current capsule [k]. *)
-  val with_current : 'k Access.t -> ('k t @ local -> 'a) @ local once -> 'a @@ portable
+  val with_current
+    : ('a : value_or_null) 'k.
+    'k Access.t
+    -> ('k t @ local -> 'a @ local unique unyielding) @ local once
+    -> 'a @ local unique unyielding
+    @@ portable
 end
 
 (** Keys represent the ownership of the capsule. *)
 module Key : sig
   (** ['k t @ unique] represents the exclusive ownership of the capsule ['k]. The
-      [unique]ness of ['k t] guarantees that only one domain can access the capsule at a
+      [unique]ness of ['k t] guarantees that only one thread can access the capsule at a
       time.
+
+      Obtaining a unique ['k t] requires either calling [Capsule.create] or acquiring a
+      synchronization primitive associated with ['k]. Such primitives are provided by the
+      [Await] library.
 
       ['k t @ aliased] indicates that the key has been permanently shared, since it's
       avaiable [aliased] and therefore not available [unique]ly. Therefore, we can allow
-      all domains read access to ['k]. *)
-  type 'k t : value mod contended external_ many portable
+      all threads read access to ['k]. *)
+  type 'k t : void mod contended external_ many portable unyielding
 
   type packed = P : 'k t -> packed [@@unboxed]
+
+  (** A boxed version of [Key.t] for places where you need a type with layout [value]. *)
+  type 'k boxed : value mod contended external_ many portable
+
+  val box : 'k t @ unique -> 'k boxed @ unique
+  val unbox : 'k boxed @ unique -> 'k t @ unique
+  val box_aliased : 'k t -> 'k boxed
+  val unbox_aliased : 'k boxed -> 'k t
 
   (** [with_password k ~f] runs [f], providing it a password for ['k], and returns the
       result of [f] together with the key.
@@ -144,33 +179,31 @@ module Key : sig
       If [f] raises an exception, the key is destroyed, leaking the contents of the
       capsule. *)
   val with_password
-    :  'k t @ unique
+    : ('a : value_or_null) 'k.
+    'k t @ unique
     -> f:('k Password.t @ local -> 'a @ unique) @ local once
-    -> 'a * 'k t @ unique
+    -> #('a * 'k t) @ unique
     @@ portable
 
   (** [with_password_local k ~f] runs [f], providing it a password for ['k], and returns
       the result of [f]. The key is destroyed, but the local password can be returned to
       provide access to the capsule. *)
   val with_password_local
-    :  'k t @ unique
-    -> f:('k Password.t @ local -> 'a @ local) @ local once
-    -> 'a @ local
+    : ('a : value_or_null) 'k.
+    'k t @ unique -> f:('k Password.t @ local -> 'a @ local) @ local once -> 'a @ local
     @@ portable
 
   (** [with_password_shared k ~f] runs [f], providing it a shared password for ['k], and
       returns the result of [f]. *)
   val with_password_shared
-    :  'k t
-    -> f:('k Password.Shared.t @ local -> 'a) @ local once
-    -> 'a
+    : ('a : value_or_null) 'k.
+    'k t -> f:('k Password.Shared.t @ local -> 'a @ unique) @ local once -> 'a @ unique
     @@ portable
 
   (** As [with_password_shared], but returns a local value. *)
   val with_password_shared_local
-    :  'k t
-    -> f:('k Password.Shared.t @ local -> 'a @ local) @ local once
-    -> 'a @ local
+    : ('a : value_or_null) 'k.
+    'k t -> f:('k Password.Shared.t @ local -> 'a @ local) @ local once -> 'a @ local
     @@ portable
 
   (** [access k ~f] runs [f], providing it access to the capsule ['k], and returns the
@@ -179,22 +212,25 @@ module Key : sig
       If [f] raises an exception, the key is destroyed, leaking the contents of the
       capsule, and the exception is reraised. *)
   val access
-    :  'k t @ unique
+    : ('a : value_or_null) 'k.
+    'k t @ unique
     -> f:('k Access.t -> 'a @ contended once portable unique) @ local once portable
-    -> 'a * 'k t @ contended once portable unique
+    -> #('a * 'k t) @ contended once portable unique
     @@ portable
 
   (** As [access], but local. *)
   val access_local
-    :  'k t @ unique
+    : ('a : value_or_null) 'k.
+    'k t @ unique
     -> f:('k Access.t -> 'a @ contended local once portable unique) @ local once portable
-    -> 'a * 'k t @ contended local once portable unique
+    -> #('a * 'k t) @ contended local once portable unique
     @@ portable
 
   (** [access_shared k ~f] runs [f], providing it a shared access to ['k], and returns the
       result of [f]. Exceptions raised from [f] are re-raised. *)
   val access_shared
-    :  'k t
+    : ('a : value_or_null) 'k.
+    'k t
     -> f:('k Access.t @ shared -> 'a @ contended once portable unique)
        @ local once portable
     -> 'a @ contended once portable unique
@@ -202,7 +238,8 @@ module Key : sig
 
   (** As [access_shared], but returns a local value. *)
   val access_shared_local
-    :  'k t
+    : ('a : value_or_null) 'k.
+    'k t
     -> f:('k Access.t @ shared -> 'a @ contended local once portable unique)
        @ local once portable
     -> 'a @ contended local once portable unique
@@ -226,206 +263,44 @@ val create : unit -> Key.packed @ unique @@ portable
     {!Access.t} for ['k]. The result is within ['k] so it must be [portable] and it is
     marked [contended]. *)
 val access
-  :  password:'k Password.t @ local
+  : ('a : value_or_null) 'k.
+  password:'k Password.t @ local
   -> f:('k Access.t -> 'a @ contended portable) @ local once portable
   -> 'a @ contended portable
   @@ portable
 
 (** As [access], but returns a local value. *)
 val access_local
-  :  password:'k Password.t @ local
-  -> f:('k Access.t -> 'a @ contended local portable) @ local once portable
-  -> 'a @ contended local portable
+  : ('a : value_or_null) 'k.
+  password:'k Password.t @ local
+  -> f:('k Access.t -> 'a @ contended local portable unique) @ local once portable
+  -> 'a @ contended local portable unique
   @@ portable
 
 (** [shared_access ~password ~f] runs [f] within the capsule ['k], providing it with a
     shared {!Access.t} for ['k]. The result is within ['k] so it must be [portable] and it
     is marked [contended]. *)
 val access_shared
-  :  password:'k Password.Shared.t @ local
+  : ('a : value_or_null) 'k.
+  password:'k Password.Shared.t @ local
   -> f:('k Access.t @ shared -> 'a @ contended portable) @ local once portable
   -> 'a @ contended portable
   @@ portable
 
 (** As [access_shared], but returns a local value. *)
 val access_shared_local
-  :  password:'k Password.Shared.t @ local
+  : ('a : value_or_null) 'k.
+  password:'k Password.Shared.t @ local
   -> f:('k Access.t @ shared -> 'a @ contended local portable) @ local once portable
   -> 'a @ contended local portable
   @@ portable
 
-module Mutex : sig
-  (** Private implementation type exposed to allow packing mutexes into [@@unboxed]
-      records/variants. *)
-  type mutex : value mod contended portable
-
-  (** ['k t] is the type of the mutex that controls access to the capsule ['k]. A mutex
-      can be created from a ['k Key @ unique]. *)
-  type 'k t : value mod contended portable = private mutex
-
-  (** [packed] is the type of a mutex for some unknown capsule. Unpacking one provides a
-      ['k Mutex.t] together with a fresh existential type brand for ['k]. *)
-  type packed : value mod contended portable = P : 'k t -> packed [@@unboxed]
-
-  (** [create k] creates a new mutex for the capsule ['k], consuming its key. *)
-  val create : 'k Key.t @ unique -> 'k t @@ portable
-
-  (** Raising an uncaught exception while holding the lock poisons the mutex. All
-      operations on a poisoned mutex raise the [Poisoned] exception. *)
-  exception Poisoned
-
-  (** [with_lock m ~f] tries to acquire the mutex [m]. If [m] is already locked, blocks
-      the current thread until it's unlocked. If successful, provides [f] a password for
-      the capsule ['k] associated with [m].
-
-      If [f] raises an exception, the mutex is marked as poisoned and the exception is
-      reraised.
-
-      If [m] is already locked by the current thread, raises [Sys_error]. *)
-  val with_lock
-    : ('a : value_or_null) 'k.
-    'k t -> f:('k Password.t @ local -> 'a @ once unique) @ local once -> 'a @ once unique
-    @@ portable
-
-  (** [with_key m ~f] tries to acquire the mutex [m]. If [m] is already locked, blocks the
-      current thread until it's unlocked. If successful, provides [f] the key for the
-      capsule ['k] associated with [m].
-
-      If [f] raises an exception, the mutex is marked as poisoned and the exception is
-      reraised.
-
-      If [m] is already locked by the current thread, raises [Sys_error]. *)
-  val with_key
-    : ('a : value_or_null) 'k.
-    'k t
-    -> f:('k Key.t @ unique -> 'a * 'k Key.t @ once unique) @ local once
-    -> 'a @ once unique
-    @@ portable
-
-  (** [destroy m] acquires the mutex [m] and returns the key representing ownership of
-      ['k]. The mutex is marked as poisoned. *)
-  val destroy : 'k t -> 'k Key.t @ unique @@ portable
-end
-
-module Rwlock : sig
-  (** Private implementation type exposed to allow packing rwlocks into [@@unboxed]
-      records/variants. *)
-  type rwlock : value mod contended portable
-
-  (** ['k t] is the type of the reader-writer lock that controls read and write access to
-      the capsule ['k]. A reader-writer lock can be created from a ['k Key.t @ unique]. *)
-  type 'k t : value mod contended portable = private rwlock
-
-  (** [packed] is the type of a reader-writer lock for some unknown capsule. Unpacking one
-      provides a ['k Rwlock.t] together with a fresh existential type brand for ['k]. *)
-  type packed : value mod contended portable = P : 'k t -> packed
-  [@@unboxed]
-  [@@unsafe_allow_any_mode_crossing
-    "TODO: This can go away once we have proper mode crossing inference for GADT \
-     constructors "]
-
-  (** [create k] creates a new reader-writer lock for the capsule ['k], consuming its key. *)
-  val create : 'k Key.t @ unique -> 'k t @@ portable
-
-  (** Reader-writer locks can be marked as frozen. Write operations on a frozen
-      reader-writer lock raise the [Frozen] exception. *)
-  exception Frozen
-
-  (** Raising an uncaught exception while holding the write lock poisons the reader-writer
-      lock. All operations on a poisoned reader-writer lock raise the [Poisoned]
-      exception. *)
-  exception Poisoned
-
-  (** [with_write_lock rw ~f] tries to write-acquire the rwlock [rw]. If [rw] is already
-      write or read locked, blocks the current thread until it's unlocked. If successful,
-      provides [f] a password for the capsule ['k] associated with [rw].
-
-      If [f] raises an exception, the reader-writer lock is marked as poisoned and the
-      exception is reraised.
-
-      If [m] is already write-locked by the current thread, raises [Sys_error]. If [m] is
-      already read-locked by the current thread, deadlocks. *)
-  val with_write_lock
-    :  'k t
-    -> f:('k Password.t @ local -> 'a) @ local once unyielding
-    -> 'a
-    @@ portable
-
-  (** [with_read_lock rw ~f] tries to read-acquire the rwlock [rw]. If [rw] is already
-      write-locked, blocks the current thread until it's unlocked. If [rw] is already
-      read-locked, increases the reader count by one for the duration of [f]. If
-      successful, provides [f] a password for the capsule ['k] associated with [rw].
-
-      If [f] raises an exception, the reader-writer lock is marked as frozen. The reader
-      count is decreased and the exception is reraised.
-
-      If [m] is already write-locked by the current thread, raises [Sys_error]. If [m] is
-      already read-locked by the current thread, nothing happens. *)
-  val with_read_lock
-    :  'k t
-    -> f:('k Password.Shared.t @ local -> 'a) @ local once unyielding
-    -> 'a
-    @@ portable
-
-  (** [freeze rw] read-acquires the rwlock [rw] and freezes it, rendering ['k] immutable,
-      and returns the [global aliased] key representing that.
-
-      Has no effect if the rwlock is already frozen. *)
-  val freeze : 'k t -> 'k Key.t @@ portable
-
-  (** [destroy rw] write-acquires the rwlock [rw] and returns the key representing the
-      ownership of ['k]. It marks the reader-writer lock as poisoned.
-
-      If [rw] is already poisoned, raises [Poisoned]. *)
-  val destroy : 'k t -> 'k Key.t @ unique @@ portable
-end
-
-module Condition : sig
-  (** ['k t] is the type of a condition variable associated with the capsule ['k]. This
-      condition may only be used with the matching ['k Mutex.t]. *)
-  type 'k t : value mod contended portable
-
-  (** [create ()] creates a new condition variable associated with the matching
-      ['k Mutex.t] and with a certain property {i P} that is protected by the mutex. *)
-  val create : unit -> 'k t @@ portable
-
-  (** [wait t ~mutex key] atomically unlocks the [mutex] and blocks the current thread on
-      the condition variable [t]. To ensure exception safety, it takes hold of the
-      ['k Key.t] associated with the mutex, provided by [Mutex.with_key].
-
-      This thread will be woken up when the condition variable [t] has been signaled via
-      {!signal} or {!broadcast}. [mutex] is locked again before [wait] returns.
-
-      However, this thread can also be woken up for no reason. One cannot assume that the
-      property {i P} associated with the condition variable [c] holds when [wait] returns;
-      one must explicitly test whether {i P} holds after calling [wait].
-
-      If called on an already poisoned [mutex], raises [Mutex.Poisoned]. *)
-  val wait
-    :  'k t
-    -> mutex:'k Mutex.t
-    -> 'k Key.t @ unique
-    -> 'k Key.t @ unique
-    @@ portable
-
-  (** [signal t] wakes up one of the threads waiting on the condition variable [t], if
-      there is one. If there is none, this call has no effect. It is recommended to call
-      [signal t] inside a critical section, that is, while the mutex associated with [t]
-      is locked. *)
-  val signal : 'k t -> unit @@ portable
-
-  (** [broadcast t] wakes up all threads waiting on the condition variable [t]. If there
-      are none, this call has no effect. It is recommended to call [broadcast t] inside a
-      critical section, that is, while the mutex associated with [t] is locked. *)
-  val broadcast : 'k t -> unit @@ portable
-end
-
 (** Pointers to data within a capsule. *)
 module Data : sig
   (** [('a, 'k) t] is the type of ['a]s within the capsule ['k]. It can be passed between
-      domains. Operations on [('a, 'k) t] require a ['k Password.t] associated with the
+      threads. Operations on [('a, 'k) t] require a ['k Password.t] associated with the
       capsule ['k]. *)
-  type ('a, 'k) t : value mod contended portable
+  type ('a, 'k) t : value mod everything with 'a @@ contended portable
 
   (** [wrap ~access v] returns a pointer to the value [v], which lives in the capsule
       ['k]. ['k] is always the current capsule. *)
@@ -441,9 +316,29 @@ module Data : sig
   (** Like [unwrap], but for unique values. *)
   val unwrap_unique : access:'k Access.t -> ('a, 'k) t @ unique -> 'a @ unique @@ portable
 
+  (** Like [wrap], but for once values. *)
+  val wrap_once : access:'k Access.t -> 'a @ once -> ('a, 'k) t @ once @@ portable
+
+  (** Like [unwrap], but for once values. *)
+  val unwrap_once : access:'k Access.t -> ('a, 'k) t @ once -> 'a @ once @@ portable
+
+  (** Like [wrap], but for once unique values. *)
+  val wrap_once_unique
+    :  access:'k Access.t
+    -> 'a @ once unique
+    -> ('a, 'k) t @ once unique
+    @@ portable
+
+  (** Like [unwrap], but for once unique values. *)
+  val unwrap_once_unique
+    :  access:'k Access.t
+    -> ('a, 'k) t @ once unique
+    -> 'a @ once unique
+    @@ portable
+
   (** [unwrap_shared ~access t] returns the shared value of [t], which lives in the
       capsule ['k]. ['k] is always the current capsule. Since ['a] may have been shared
-      with other domains, ['a] must cross portability. *)
+      with other threads, ['a] must cross portability. *)
   val unwrap_shared
     : ('a : value mod portable) 'k.
     access:'k Access.t @ shared -> ('a, 'k) t -> 'a @ shared
@@ -452,6 +347,12 @@ module Data : sig
   (** [create f] runs [f] within the capsule ['k] and returns a pointer to the result of
       [f]. *)
   val create : (unit -> 'a) @ local once portable -> ('a, 'k) t @@ portable
+
+  (** Like [create], but for once values. *)
+  val create_once
+    :  (unit -> 'a @ once) @ local once portable
+    -> ('a, 'k) t @ once
+    @@ portable
 
   (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and
       returns a pointer to the result. *)
@@ -516,7 +417,7 @@ module Data : sig
 
   (** [map_shared ~password ~f t] applies [f] to the shared parts of [t] within the
       capsule ['k] and returns a pointer to the result. Since ['a] may have been shared
-      with other domains, ['a] must cross portability. *)
+      with other threads, ['a] must cross portability. *)
   val map_shared
     : ('a : value mod portable) 'b 'k.
     password:'k Password.Shared.t @ local
@@ -527,7 +428,7 @@ module Data : sig
 
   (** [extract_shared ~password ~f t] applies [f] to the shared parts of [t] within the
       capsule ['k] and returns the result. The result is within ['k] so must be portable
-      and is marked contended. Since ['a] may have been shared with other domains, ['a]
+      and is marked contended. Since ['a] may have been shared with other threads, ['a]
       must cross portability. *)
   val extract_shared
     : ('a : value mod portable) 'b 'k.
@@ -750,9 +651,23 @@ module Data : sig
       -> 'a @ local unique
       @@ portable
 
+    (** Like [wrap], but for once values. *)
+    val wrap_once
+      :  access:'k Access.t
+      -> 'a @ local once
+      -> ('a, 'k) t @ local once
+      @@ portable
+
+    (** Like [unwrap], but for once values. *)
+    val unwrap_once
+      :  access:'k Access.t
+      -> ('a, 'k) t @ local once
+      -> 'a @ local once
+      @@ portable
+
     (** [unwrap_shared ~access t] returns the shared value of [t], which lives in the
         capsule ['k]. ['k] is always the current capsule. Since ['a] may have been shared
-        with other domains, ['a] must cross portability. *)
+        with other threads, ['a] must cross portability. *)
     val unwrap_shared
       : ('a : value mod portable) 'k.
       access:'k Access.t @ shared -> ('a, 'k) t @ local -> 'a @ local shared
@@ -838,7 +753,7 @@ module Data : sig
 
     (** [map_shared ~password ~f t] applies [f] to the shared parts of [t] within the
         capsule ['k] and returns a pointer to the result. Since ['a] may have been shared
-        with other domains, ['a] must cross portability. *)
+        with other threads, ['a] must cross portability. *)
     val map_shared
       : ('a : value mod portable) 'b 'k.
       password:'k Password.Shared.t @ local
@@ -849,7 +764,7 @@ module Data : sig
 
     (** [extract_shared ~password ~f t] applies [f] to the shared parts of [t] within the
         capsule ['k] and returns the result. The result is within ['k] so must be portable
-        and is marked contended. Since ['a] may have been shared with other domains, ['a]
+        and is marked contended. Since ['a] may have been shared with other threads, ['a]
         must cross portability. *)
     val extract_shared
       : ('a : value mod portable) 'b 'k.

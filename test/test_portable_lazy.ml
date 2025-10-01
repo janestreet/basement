@@ -1,10 +1,6 @@
 open! Base
 open Expect_test_helpers_base
-open Portable_test_helpers
 open Basement
-
-(* Disable alert on [Domain.spawn] since we are explicitly testing its behavior. *)
-[@@@alert "-unsafe_parallelism"]
 
 let%expect_test _ =
   let t = Portable_lazy.from_val 1 in
@@ -40,50 +36,30 @@ let%expect_test "force always returns the same value" =
   [%expect {| |}]
 ;;
 
-let%expect_test ("if multiple domains force at the same time, the lazy still always \
-                  returns the same value" [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
-  let t = Portable_lazy.from_fun (fun () -> Portable_atomic.make 0) in
-  let ndomains = 32 in
-  let barrier = Barrier.create ndomains in
-  let domains =
-    List.init ndomains ~f:(fun _ ->
-      Domain.Safe.spawn (fun () ->
-        Barrier.await barrier;
-        Portable_atomic.incr (Portable_lazy.force t)))
-  in
-  List.iter domains ~f:Domain.join;
-  require_equal (module Int) ndomains (Portable_atomic.get (Portable_lazy.force t))
-;;
-
-let%expect_test ("if multiple domains force at the same time, the thunk is only called \
-                  once" [@tags "runtime5-only", "no-js", "no-wasm"])
-  =
-  let times_force_called = Portable_atomic.make 0 in
-  let t = Portable_lazy.from_fun (fun () -> Portable_atomic.incr times_force_called) in
-  let ndomains = 32 in
-  let barrier = Barrier.create ndomains in
-  let domains =
-    List.init ndomains ~f:(fun _ ->
-      Domain.Safe.spawn (fun () ->
-        Barrier.await barrier;
-        Portable_lazy.force t))
-  in
-  List.iter domains ~f:Domain.join;
-  require_equal (module Int) 1 (Portable_atomic.get times_force_called)
-;;
-
 let%expect_test "peek" =
   let t = Portable_lazy.from_fun (fun () -> 1) in
   let result = Portable_lazy.peek t in
-  print_s [%message "" ~peek:(result : int option)];
+  print_s [%message "" ~peek:(result : int or_null)];
   print_s [%message "" ~force:(Portable_lazy.force t : int)];
   let result = Portable_lazy.peek t in
-  print_s [%message "" ~peek:(result : int option)];
+  print_s [%message "" ~peek:(result : int or_null)];
   [%expect
     {|
     (peek ())
     (force 1)
     (peek (1))
+    |}]
+;;
+
+let%expect_test "relaxed value restriction applies (because it's covariant)" =
+  let t : type a. a list Portable_lazy.t = Portable_lazy.from_fun (fun () -> []) in
+  let result : int list = Portable_lazy.force t in
+  print_s [%message "" ~force:(result : _ list)];
+  let result : bool list = Portable_lazy.force t in
+  print_s [%message "" ~force:(result : _ list)];
+  [%expect
+    {|
+    (force ())
+    (force ())
     |}]
 ;;

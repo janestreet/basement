@@ -1,5 +1,11 @@
 external runtime5 : unit -> bool @@ portable = "%runtime5"
-external ignore_contended : 'a @ contended -> unit @@ portable = "%ignore"
+
+external ignore_contended
+  : ('a : value_or_null).
+  'a @ contended -> unit
+  @@ portable
+  = "%ignore"
+
 external raise : exn -> 'a @ portable unique @@ portable = "%reraise"
 external raise_notrace : exn -> 'a @ portable unique @@ portable = "%raise_notrace"
 
@@ -106,43 +112,13 @@ module Atomic = struct
   end
 end
 
+module Backoff = Backoff
+
 module Callback = struct
   module Safe = Callback.Safe
 end
 
-module Domain = struct
-  let cpu_relax = if runtime5 () then Domain.cpu_relax else fun () -> ()
-
-  module Safe = struct
-    include Domain.Safe
-
-    module DLS = struct
-      include Domain.Safe.DLS
-
-      external magic_many__portable
-        :  ('a[@local_opt]) @ once portable
-        -> ('a[@local_opt]) @ portable
-        @@ portable
-        = "%identity"
-
-      let[@inline] access f = access (magic_many__portable f) [@nontail]
-
-      let[@inline] new_key ?split_from_parent f =
-        let split_from_parent =
-          match split_from_parent with
-          | None -> None
-          | Some split_from_parent ->
-            let split_from_parent x =
-              let mk = split_from_parent x in
-              magic_many__portable mk
-            in
-            Some split_from_parent
-        in
-        new_key ?split_from_parent f
-      ;;
-    end
-  end
-end
+module Domain = Domain
 
 module Ephemeron = struct
   module K1 = Ephemeron.K1
@@ -150,9 +126,7 @@ module Ephemeron = struct
   module Kn = Ephemeron.Kn
 end
 
-module Format = struct
-  module Safe = Format.Safe
-end
+module Format = Format
 
 module Hashtbl = struct
   module MakePortable = Hashtbl.MakePortable
@@ -192,40 +166,39 @@ end
 
 module Obj = struct
   external magic_portable
-    :  ('a[@local_opt])
-    -> ('a[@local_opt]) @ portable
+    : ('a : any).
+    ('a[@local_opt]) -> ('a[@local_opt]) @ portable
     @@ portable
     = "%identity"
+  [@@layout_poly]
 
   external magic_uncontended
-    :  ('a[@local_opt]) @ contended
-    -> ('a[@local_opt])
+    : ('a : any).
+    ('a[@local_opt]) @ contended -> ('a[@local_opt])
     @@ portable
     = "%identity"
+  [@@layout_poly]
 
   external magic_unique
-    :  ('a[@local_opt])
-    -> ('a[@local_opt]) @ unique
+    : ('a : any).
+    ('a[@local_opt]) -> ('a[@local_opt]) @ unique
     @@ portable
     = "%identity"
+  [@@layout_poly]
 
   external magic_many
-    :  ('a[@local_opt]) @ once
-    -> ('a[@local_opt])
+    : ('a : any).
+    ('a[@local_opt]) @ once -> ('a[@local_opt])
     @@ portable
     = "%identity"
+  [@@layout_poly]
 
   external magic_unyielding
-    :  'a @ local yielding
-    -> 'a @ local unyielding
+    : ('a : any).
+    'a @ local yielding -> 'a @ local unyielding
     @@ portable
     = "%identity"
-
-  external magic_at_unique
-    :  ('a[@local_opt]) @ unique
-    -> ('b[@local_opt]) @ unique
-    @@ portable
-    = "%identity"
+  [@@layout_poly]
 
   module Extension_constructor = struct
     let of_val x = Stdlib.Obj.Extension_constructor.of_val (magic_uncontended x)

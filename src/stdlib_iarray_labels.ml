@@ -3,7 +3,7 @@ open! Stdlib
 (* Module [IarrayLabels]: labelled Iarray module *)
 
 (* An alias for the type of immutable arrays. *)
-type +'a t = 'a iarray
+type (+'a : any mod separable) t = 'a iarray
 
 (* Array operations *)
 

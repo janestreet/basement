@@ -10,7 +10,11 @@ external runtime5 : unit -> bool @@ portable = "%runtime5"
 (** Like {!ignore}, but takes a [contended] value. This is technically strictly stronger
     than [ignore], but changing [ignore] in place causes backwards compatibility issues
     due to type inference. *)
-external ignore_contended : 'a @ contended -> unit @@ portable = "%ignore"
+external ignore_contended
+  : ('a : value_or_null).
+  'a @ contended -> unit
+  @@ portable
+  = "%ignore"
 
 external raise : exn -> 'a @ portable unique @@ portable = "%reraise"
 external raise_notrace : exn -> 'a @ portable unique @@ portable = "%raise_notrace"
@@ -20,46 +24,26 @@ module Atomic : sig @@ portable
   type 'a t := 'a Stdlib.Atomic.t
 
   module Local : sig
-    external make : 'a -> ('a t[@local_opt]) @@ portable = "%makemutable"
-
-    external make_contended
-      :  'a
-      -> ('a t[@local_opt])
-      @@ portable
-      = "caml_atomic_make_contended"
-
-    external get : 'a t @ local -> 'a @@ portable = "%atomic_load"
-    external set : 'a t @ local -> 'a -> unit @@ portable = "%atomic_set"
-    external exchange : 'a t @ local -> 'a -> 'a @@ portable = "%atomic_exchange"
-
-    external compare_and_set
-      :  'a t @ local
-      -> 'a
-      -> 'a
-      -> bool
-      @@ portable
-      = "%atomic_cas"
+    external make : 'a -> ('a t[@local_opt]) = "%makemutable"
+    external make_contended : 'a -> ('a t[@local_opt]) = "caml_atomic_make_contended"
+    external get : 'a t @ local -> 'a = "%atomic_load"
+    external set : 'a t @ local -> 'a -> unit = "%atomic_set"
+    external exchange : 'a t @ local -> 'a -> 'a = "%atomic_exchange"
+    external compare_and_set : 'a t @ local -> 'a -> 'a -> bool = "%atomic_cas"
 
     external compare_exchange
       :  'a t @ local
       -> 'a
       -> 'a
       -> 'a
-      @@ portable
       = "%atomic_compare_exchange"
 
-    external fetch_and_add
-      :  int t @ contended local
-      -> int
-      -> int
-      @@ portable
-      = "%atomic_fetch_add"
-
-    external add : int t @ contended local -> int -> unit @@ portable = "%atomic_add"
-    external sub : int t @ contended local -> int -> unit @@ portable = "%atomic_sub"
-    external logand : int t @ contended local -> int -> unit @@ portable = "%atomic_land"
-    external logor : int t @ contended local -> int -> unit @@ portable = "%atomic_lor"
-    external logxor : int t @ contended local -> int -> unit @@ portable = "%atomic_lxor"
+    external fetch_and_add : int t @ contended local -> int -> int = "%atomic_fetch_add"
+    external add : int t @ contended local -> int -> unit = "%atomic_add"
+    external sub : int t @ contended local -> int -> unit = "%atomic_sub"
+    external logand : int t @ contended local -> int -> unit = "%atomic_land"
+    external logor : int t @ contended local -> int -> unit = "%atomic_lor"
+    external logxor : int t @ contended local -> int -> unit = "%atomic_lxor"
     val incr : int t @ contended local -> unit
     val decr : int t @ contended local -> unit
   end
@@ -68,52 +52,73 @@ module Atomic : sig @@ portable
     external get
       : ('a : value mod contended).
       'a t @ contended local -> 'a
-      @@ portable
       = "%atomic_load"
 
     external set
       : ('a : value mod portable).
       'a t @ contended local -> 'a -> unit
-      @@ portable
       = "%atomic_set"
 
     external exchange
       : ('a : value mod contended portable).
       'a t @ contended local -> 'a -> 'a
-      @@ portable
       = "%atomic_exchange"
 
     external compare_and_set
       : ('a : value mod portable).
       'a t @ contended local -> 'a -> 'a -> bool
-      @@ portable
       = "%atomic_cas"
 
     external compare_exchange
       : ('a : value mod contended portable).
       'a t @ contended local -> 'a -> 'a -> 'a
-      @@ portable
       = "%atomic_compare_exchange"
   end
 
   module Expert : sig
-    external fenceless_get : 'a t @ local -> 'a @@ portable = "%field0"
-    external fenceless_set : 'a t @ local -> 'a -> unit @@ portable = "%setfield0"
+    external fenceless_get : 'a t @ local -> 'a = "%field0"
+    external fenceless_set : 'a t @ local -> 'a -> unit = "%setfield0"
 
     module Contended : sig
       external fenceless_get
         : ('a : value mod contended).
         'a t @ contended local -> 'a
-        @@ portable
         = "%field0"
 
       external fenceless_set
         : ('a : value mod portable).
         'a t @ contended local -> 'a -> unit
-        @@ portable
         = "%setfield0"
     end
   end
+end
+
+module Backoff : sig @@ portable
+  (** Type of backoff values. *)
+  type t : immediate
+
+  (** Logarithm of the maximum allowed value for wait. *)
+  val max_wait_log : int
+
+  (** [create] creates a backoff value. [upper_wait_log], [lower_wait_log] override the
+      logarithmic upper and lower bound on the number of spins executed by {!once}. *)
+  val create : ?lower_wait_log:int -> ?upper_wait_log:int -> unit -> t
+
+  (** [default] is equivalent to [create ()]. *)
+  val default : t
+
+  (** [once b] executes one random wait and returns a new backoff with logarithm of the
+      current maximum value incremented unless it is already at [upper_wait_log] of [b].
+
+      Note that this uses the default Stdlib [Random] per-domain generator. *)
+  val once : t -> t
+
+  (** [reset b] returns a backoff equivalent to [b] except with current value set to the
+      [lower_wait_log] of [b]. *)
+  val reset : t -> t
+
+  (** [get_wait_log b] returns logarithm of the maximum value of wait for next {!once}. *)
+  val get_wait_log : t -> int
 end
 
 module Callback : sig
@@ -130,35 +135,21 @@ module Callback : sig
   end
 end
 
-module Domain : sig @@ portable
-  type 'a t := 'a Domain.t
+module Domain : sig
+  (*_ Do not use a default modality for [Domain]; it uses unsafe implementations
+      internally, so each item should be considered and marked individually. *)
+
+  type id = private int
 
   (** If busy-waiting, calling cpu_relax () between iterations will improve performance on
-      some CPU architectures. On runtime4, this is a noop. *)
-  val cpu_relax : unit -> unit
+      some CPU architectures. When poll insertion is disabled, this is a polling point. *)
+  val cpu_relax : unit -> unit @@ portable
+
+  val self : unit -> id @@ portable
 
   module Safe : sig
     module DLS : sig
-      module Access : sig
-        type t : value mod external_ global many portable unique
-
-        val for_initial_domain : t @@ nonportable
-      end
-
       type 'a key : value mod contended portable = 'a Domain.DLS.key
-
-      exception Encapsulated of string
-
-      val access
-        :  (Access.t -> 'a @ contended portable) @ local once portable unyielding
-        -> 'a @ contended portable
-        @@ portable
-
-      val new_key'
-        :  ?split_from_parent:('a -> (Access.t -> 'a) @ portable) @ portable
-        -> (Access.t -> 'a) @ portable
-        -> 'a key
-        @@ portable
 
       val new_key
         :  ?split_from_parent:('a -> (unit -> 'a) @ once portable) @ portable
@@ -166,24 +157,11 @@ module Domain : sig @@ portable
         -> 'a key
         @@ portable
 
-      val get : Access.t -> 'a key -> 'a @@ portable
-      val set : Access.t -> 'a key -> 'a -> unit @@ portable
+      val get : ('a : value mod portable). 'a key -> 'a @ contended @@ portable
+      val set : ('a : value mod contended). 'a key -> 'a @ portable -> unit @@ portable
     end
 
-    val spawn : (unit -> 'a) @ portable -> 'a t @@ portable
-    [@@alert
-      unsafe_parallelism
-        "This function is unsafe and should not be used in production code.\n\
-         A safe interface for parallelism is forthcoming."]
-
-    val spawn' : (DLS.Access.t -> 'a) @ portable -> 'a t @@ portable
-    [@@alert
-      unsafe_parallelism
-        "This function is unsafe and should not be used in production code.\n\
-         A safe interface for parallelism is forthcoming."]
-
     val at_exit : (unit -> unit) @ portable -> unit @@ portable
-    val at_exit' : DLS.Access.t -> (unit -> unit) -> unit @@ portable
   end
 end
 
@@ -259,38 +237,6 @@ module Format : sig @@ portable
   (** Submodule containing non-backwards-compatible functions which enforce thread safety
       via modes. *)
   module Safe : sig
-    (** Like {!get_std_formatter}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [formatter] does not escape the current domain. This is
-        necessary as the [formatter] may contain functions which close over other data in
-        the current domain. *)
-    val get_std_formatter : Domain.Safe.DLS.Access.t -> formatter
-
-    (** Like {!get_err_formatter}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [formatter] does not escape the current domain. This is
-        necessary as the [formatter] may contain functions which close over other data in
-        the current domain. *)
-    val get_err_formatter : Domain.Safe.DLS.Access.t -> formatter
-
-    (** Like {!get_str_formatter}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [formatter] does not escape the current domain. This is
-        necessary as the [formatter] may contain functions which close over other data in
-        the current domain. *)
-    val get_str_formatter : Domain.Safe.DLS.Access.t -> formatter
-
-    (** Like {!get_stdbuf}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [Buffer.t] does not escape the current domain. This is
-        necessary as the [Buffer.t] is mutable data which is not safe to share between
-        domains. *)
-    val get_stdbuf : Domain.Safe.DLS.Access.t -> Buffer.t
-
     (** Like {!make_synchronized_formatter}, but can be called from any domain.
 
         The provided closures must be [portable] as they will be called from other domains
@@ -362,21 +308,35 @@ module Modes : sig
 end
 
 module Obj : sig @@ portable
-  external magic_portable : ('a[@local_opt]) -> ('a[@local_opt]) @ portable = "%identity"
+  external magic_portable
+    : ('a : any).
+    ('a[@local_opt]) -> ('a[@local_opt]) @ portable
+    = "%identity"
+  [@@layout_poly]
 
   external magic_uncontended
-    :  ('a[@local_opt]) @ contended
-    -> ('a[@local_opt])
+    : ('a : any).
+    ('a[@local_opt]) @ contended -> ('a[@local_opt])
     = "%identity"
+  [@@layout_poly]
 
-  external magic_unique : ('a[@local_opt]) -> ('a[@local_opt]) @ unique = "%identity"
-  external magic_many : ('a[@local_opt]) @ once -> ('a[@local_opt]) = "%identity"
-  external magic_unyielding : 'a @ local yielding -> 'a @ local unyielding = "%identity"
-
-  external magic_at_unique
-    :  ('a[@local_opt]) @ unique
-    -> ('b[@local_opt]) @ unique
+  external magic_unique
+    : ('a : any).
+    ('a[@local_opt]) -> ('a[@local_opt]) @ unique
     = "%identity"
+  [@@layout_poly]
+
+  external magic_many
+    : ('a : any).
+    ('a[@local_opt]) @ once -> ('a[@local_opt])
+    = "%identity"
+  [@@layout_poly]
+
+  external magic_unyielding
+    : ('a : any).
+    'a @ local yielding -> 'a @ local unyielding
+    = "%identity"
+  [@@layout_poly]
 
   module Extension_constructor : sig
     val of_val : 'a @ contended -> extension_constructor
