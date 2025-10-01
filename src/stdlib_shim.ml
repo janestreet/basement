@@ -82,25 +82,7 @@ module Domain = struct
 
   module Safe = struct
     module DLS = struct
-      module Access = struct
-        type t = Access
-
-        let for_initial_domain = Access
-      end
-
       type 'a key = 'a Domain.DLS.key
-
-      exception Encapsulated of string
-
-      let[@inline] access f =
-        try f Access.Access with
-        | exn ->
-          let bt = Printexc.get_raw_backtrace () in
-          let exn_string = Printexc.to_string exn in
-          Printexc.raise_with_backtrace (Encapsulated exn_string) bt
-      ;;
-
-      let access__local = access
 
       let[@inline] new_key ?split_from_parent f =
         let split_from_parent =
@@ -111,22 +93,11 @@ module Domain = struct
         Domain.DLS.new_key ?split_from_parent f
       ;;
 
-      let[@inline] new_key' ?split_from_parent f =
-        let split_from_parent =
-          match split_from_parent with
-          | None -> None
-          | Some g -> Some (fun x -> g x Access.Access)
-        in
-        let f () = f Access.Access in
-        Domain.DLS.new_key ?split_from_parent f
-      ;;
-
-      let get Access.Access k = Domain.DLS.get k
-      let set Access.Access k v = Domain.DLS.set k v
+      let get = Domain.DLS.get
+      let set = Domain.DLS.set
     end
 
     let at_exit = Domain.at_exit
-    let[@inline] at_exit' DLS.Access.Access f = Domain.at_exit f
   end
 end
 
@@ -193,11 +164,7 @@ end
 
 module Format = struct
   module Safe = struct
-    let get_std_formatter _ = Format.get_std_formatter ()
-    let get_err_formatter _ = Format.get_err_formatter ()
-    let get_str_formatter _ = Format.get_str_formatter ()
-    let get_stdbuf _ = Format.get_stdbuf ()
-    let make_synchronized_formatter f g = Format.make_synchronized_formatter f g
+    let make_synchronized_formatter = Format.make_synchronized_formatter
   end
 end
 
@@ -257,7 +224,6 @@ module Obj = struct
   external magic_unique : 'a -> 'a = "%identity"
   external magic_many : 'a -> 'a = "%identity"
   external magic_unyielding : 'a -> 'a = "%identity"
-  external magic_at_unique : 'a -> 'b = "%identity"
 
   module Extension_constructor = struct
     let of_val = Stdlib.Obj.Extension_constructor.of_val

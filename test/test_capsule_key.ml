@@ -1,5 +1,6 @@
 open! Base
 open Basement
+open Blocking_sync [@@alert "-deprecated"]
 
 external ( = ) : 'a -> 'a -> bool = "%equal"
 external raise : exn -> 'a = "%reraise"
@@ -28,14 +29,14 @@ let%expect_test "[Key]s and [Mutex]es" =
     Capsule.Key.access k ~f:(fun access ->
       AliasedMany (Capsule.Data.wrap ~access (ref "My value")))
   in
-  (* [Capsule.Mutex.create] takes the key. *)
-  let m = Capsule.Mutex.create k in
+  (* [Mutex.create] takes the key. *)
+  let m = Mutex.create k in
   let () =
-    Capsule.Mutex.with_lock m ~f:(fun password ->
+    Mutex.with_lock m ~f:(fun password ->
       Capsule.Data.iter x ~password ~f:(fun s -> s := "Another value"))
   in
-  (* [Capsule.Mutex.destroy] returns the key. *)
-  let k = Capsule.Mutex.destroy m in
+  (* [Mutex.destroy] returns the key. *)
+  let k = Mutex.destroy m in
   (* [Capsule.Key.destroy] merges the capsule into the current one. *)
   let access = Capsule.Key.destroy k in
   [%test_result: string] !(Capsule.Data.unwrap ~access x) ~expect:"Another value"
@@ -67,10 +68,15 @@ let%expect_test "[with_password_local] destroys the key but returns a local valu
       ( (Capsule.access_local ~password ~f:(fun access ->
            { aliased = Capsule.Data.wrap ~access (ref "Local value") }))
           .aliased
-      , password ))
+      , Capsule.Password.box password ))
   in
   (* We can still access the data through the password. *)
-  let s = Capsule.Data.Local.extract x ~password ~f:(fun x : string -> x.contents) in
+  let s =
+    Capsule.Data.Local.extract
+      x
+      ~password:(Capsule.Password.unbox password)
+      ~f:(fun x : string -> x.contents)
+  in
   assert (s = "Local value")
 ;;
 
@@ -174,9 +180,9 @@ let%expect_test "[Mutex.with_key] provides direct access to the key" =
     Capsule.Key.access k ~f:(fun access ->
       AliasedMany (Capsule.Data.wrap ~access (ref "Initial value")))
   in
-  let m = Capsule.Mutex.create k in
+  let m = Mutex.create k in
   let result =
-    Capsule.Mutex.with_key m ~f:(fun key ->
+    Mutex.with_key m ~f:(fun key ->
       let (), key =
         Capsule.Key.with_password key ~f:(fun password ->
           Capsule.Data.iter x ~password ~f:(fun s -> s := "Modified with key"))
@@ -184,7 +190,7 @@ let%expect_test "[Mutex.with_key] provides direct access to the key" =
       "Success", key)
   in
   [%test_result: string] result ~expect:"Success";
-  let k = Capsule.Mutex.destroy m in
+  let k = Mutex.destroy m in
   let access = Capsule.Key.destroy k in
   [%test_result: string] !(Capsule.Data.unwrap ~access x) ~expect:"Modified with key"
 ;;
@@ -192,15 +198,16 @@ let%expect_test "[Mutex.with_key] provides direct access to the key" =
 let%expect_test "Exceptions in [Mutex.with_key] are re-raised and poison the mutex" =
   let exception Key_exception of string in
   let (P k) = Capsule.create () in
-  let m = Capsule.Mutex.create k in
+  let m = Mutex.create k in
   match
-    Capsule.Mutex.with_key m ~f:(fun _key ->
-      raise (Key_exception "Exception from with_key!"))
+    Mutex.with_key m ~f:(fun _key ->
+      match raise (Key_exception "Exception from with_key!") with
+      | (_ : nothing) -> .)
   with
   | _result -> assert false
   | exception Key_exception s ->
     [%test_result: string] s ~expect:"Exception from with_key!";
-    (match Capsule.Mutex.with_key m ~f:(fun k -> "No exception", k) with
+    (match Mutex.with_key m ~f:(fun k -> "No exception", k) with
      | _result -> assert false
-     | exception Capsule.Mutex.Poisoned -> ())
+     | exception Mutex.Poisoned -> ())
 ;;

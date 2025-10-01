@@ -51,13 +51,13 @@
             (field i64)
             (field $state (mut i32)))))
 
-   (func (export "caml_capsule_mutex_new") (param (ref eq)) (result (ref eq))
+   (func (export "caml_blocking_mutex_new") (param (ref eq)) (result (ref eq))
       (struct.new $mutex
          (global.get $mutex_ops) (call $custom_next_id) (i32.const 0)))
 
    (@string $lock_failure "Mutex.lock: mutex already locked.")
 
-   (func (export "caml_capsule_mutex_lock") (param (ref eq)) (result (ref eq))
+   (func (export "caml_blocking_mutex_lock") (param (ref eq)) (result (ref eq))
       (local $t (ref $mutex))
       (local.set $t (ref.cast (ref $mutex) (local.get 0)))
       (if (struct.get $mutex $state (local.get $t))
@@ -65,79 +65,29 @@
       (struct.set $mutex $state (local.get $t) (i32.const 1))
       (ref.i31 (i32.const 0)))
 
-   (func (export "caml_capsule_mutex_unlock") (param (ref eq)) (result (ref eq))
+   (func (export "caml_blocking_mutex_unlock") (param (ref eq)) (result (ref eq))
       (struct.set $mutex $state
          (ref.cast (ref $mutex) (local.get 0)) (i32.const 0))
       (ref.i31 (i32.const 0)))
 
-   (func (export "caml_capsule_condition_new") (param (ref eq)) (result (ref eq))
+   (func (export "caml_blocking_condition_new") (param (ref eq)) (result (ref eq))
       (ref.i31 (i32.const 0)))
 
    (@string $condition_failure "Condition.wait: cannot wait.")
 
-   (func (export "caml_capsule_condition_wait")
+   (func (export "caml_blocking_condition_wait")
       (param (ref eq)) (param (ref eq)) (result (ref eq))
       (call $caml_raise_sys_error (global.get $condition_failure))
       (ref.i31 (i32.const 0)))
 
-   (func (export "caml_capsule_condition_signal") (param (ref eq)) (result (ref eq))
+   (func (export "caml_blocking_condition_signal") (param (ref eq)) (result (ref eq))
       (ref.i31 (i32.const 0)))
 
-   (func (export "caml_capsule_condition_broadcast")
+   (func (export "caml_thread_yield") (param (ref eq)) (result (ref eq))
+      (ref.i31 (i32.const 0)))
+
+   (func (export "caml_blocking_condition_broadcast")
       (param (ref eq)) (result (ref eq))
-      (ref.i31 (i32.const 0)))
-
-   (global $rwlock_ops (ref $custom_operations)
-      (struct.new $custom_operations
-         (@string "_capsule_rwlock")
-         (ref.func $custom_compare_id)
-         (ref.null $compare)
-         (ref.func $custom_hash_id)
-         (ref.null $fixed_length)
-         (ref.null $serialize)
-         (ref.null $deserialize)
-         (ref.null $dup)))
-
-   (type $rwlock
-      (sub final $custom_with_id
-         (struct
-            (field (ref $custom_operations))
-            (field i64)
-            (field $wrlocked (mut i32))
-            (field $rdlocks (mut i32)))))
-
-   (func (export "caml_capsule_rwlock_new") (param (ref eq)) (result (ref eq))
-      (struct.new $rwlock
-         (global.get $rwlock_ops) (call $custom_next_id) (i32.const 0) (i32.const 0)))
-
-   (@string $wrlock_failure "Rwlock.wrlock: rwlock already locked.")
-   (@string $rdlock_failure "Rwlock.rdlock: rwlock already write locked.")
-
-   (func (export "caml_capsule_rwlock_wrlock") (param (ref eq)) (result (ref eq))
-      (local $t (ref $rwlock))
-      (local.set $t (ref.cast (ref $rwlock) (local.get 0)))
-      (if (i32.or (struct.get $rwlock $wrlocked (local.get $t))
-                  (i32.gt_u (struct.get $rwlock $rdlocks (local.get $t)) (i32.const 0)))
-         (then (call $caml_raise_sys_error (global.get $wrlock_failure))))
-      (struct.set $rwlock $wrlocked (local.get $t) (i32.const 1))
-      (ref.i31 (i32.const 0)))
-
-   (func (export "caml_capsule_rwlock_rdlock") (param (ref eq)) (result (ref eq))
-      (local $t (ref $rwlock))
-      (local.set $t (ref.cast (ref $rwlock) (local.get 0)))
-      (if (struct.get $rwlock $wrlocked (local.get $t))
-         (then (call $caml_raise_sys_error (global.get $rdlock_failure))))
-      (struct.set $rwlock $rdlocks (local.get $t)
-         (i32.add (struct.get $rwlock $rdlocks (local.get $t)) (i32.const 1)))
-      (ref.i31 (i32.const 0)))
-
-   (func (export "caml_capsule_rwlock_unlock") (param (ref eq)) (result (ref eq))
-      (local $t (ref $rwlock))
-      (local.set $t (ref.cast (ref $rwlock) (local.get 0)))
-      (if (struct.get $rwlock $wrlocked (local.get $t))
-         (then (struct.set $rwlock $wrlocked (local.get $t) (i32.const 0)))
-         (else (struct.set $rwlock $rdlocks (local.get $t)
-            (i32.sub (struct.get $rwlock $rdlocks (local.get $t)) (i32.const 1)))))
       (ref.i31 (i32.const 0)))
 
    (func (export "caml_is_runtime5_stub") (param (ref eq)) (result (ref eq))
@@ -217,5 +167,25 @@
       (array.set $block (local.get $b) (i32.const 1)
          (ref.i31 (i32.xor (i31.get_s (ref.cast (ref i31) (local.get $old)))
                            (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+      (ref.i31 (i32.const 0)))
+
+   (@string $dynamics_failure "Fiber-based dynamics are not supported in wasm")
+
+   (func (export "basement_dynamic_supported") (param (ref eq)) (result (ref eq))
+     (ref.i31 (i32.const 0)))
+
+   (func $unsupported_dynamics
+      (call $caml_raise_sys_error (global.get $dynamics_failure)))
+
+   (func (export "basement_alloc_stack_bind") (param (ref eq)) (param (ref eq)) (param (ref eq)) (param (ref eq)) (param (ref eq)) (result (ref eq))
+      (call $unsupported_dynamics)
+      (ref.i31 (i32.const 0)))
+
+   (func (export "basement_dynamic_make") (param (ref eq)) (result (ref eq))
+      (call $unsupported_dynamics)
+      (ref.i31 (i32.const 0)))
+
+   (func (export "basement_dynamic_get") (param (ref eq)) (result (ref eq))
+      (call $unsupported_dynamics)
       (ref.i31 (i32.const 0)))
 )

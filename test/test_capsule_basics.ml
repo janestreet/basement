@@ -1,29 +1,30 @@
 open! Base
 open Basement
+open Blocking_sync [@@alert "-deprecated"]
 
 (* Both [Mutex.t] and [Data.t] are [value mod portable contended]. *)
 
-type 'k _mutex = 'k Capsule.Mutex.t
+type 'k _mutex = 'k Mutex.t
 type ('a, 'k) _data = ('a, 'k) Capsule.Data.t
 
 (* Packed mutexes are [value mod portable contended]. *)
 
-type _packed = Capsule.Mutex.packed
+type _packed = Mutex.packed
 type 'a myref = { mutable v : 'a }
 
 module Cell = struct
-  type 'a t = Mk : 'k Capsule.Mutex.t * ('a myref, 'k) Capsule.Data.t -> 'a t
+  type 'a t = Mk : 'k Mutex.t * ('a myref, 'k) Capsule.Data.t -> 'a t
 
   let create (type a) (x : a) : a t =
     let (P k) = Capsule.create () in
-    let m = Capsule.Mutex.create k in
+    let m = Mutex.create k in
     let p = Capsule.Data.create (fun () -> { v = x }) in
     Mk (m, p)
   ;;
 
   let read (type a) (t : a t) : a =
     let (Mk (m, p)) = t in
-    (Capsule.Mutex.with_lock m ~f:(fun password ->
+    (Mutex.with_lock m ~f:(fun password ->
        let read' : a myref -> a aliased = fun r -> { aliased = r.v } in
        Capsule.Data.extract p ~password ~f:read'))
       .aliased
@@ -31,7 +32,7 @@ module Cell = struct
 
   let write (type a) (t : a t) (x : a) =
     let (Mk (m, p)) = t in
-    Capsule.Mutex.with_lock m ~f:(fun password ->
+    Mutex.with_lock m ~f:(fun password ->
       Capsule.Data.iter p ~password ~f:(fun r -> r.v <- x))
   ;;
 end
@@ -43,17 +44,9 @@ let%expect_test "[Cell.create], [read], and [write]" =
   [%test_result: int] (Cell.read ptr) ~expect:45
 ;;
 
-let ignore_initial_access : Capsule.initial Capsule.Access.t option -> unit option
-  = function
-  | None -> None
-  | Some _ -> Some ()
-;;
-
-let%expect_test "[get_initial] works in runtime4" =
-  let () =
-    Capsule.get_initial Stdlib_shim.Domain.Safe.DLS.Access.for_initial_domain
-    |> ignore_initial_access
-    |> Expect_test_helpers_base.require_some
-  in
+let%expect_test "[access_initial] works in runtime4" =
+  Capsule.access_initial (function
+    | Some (_ : Capsule.initial Capsule.Access.boxed) -> ()
+    | None -> failwith "Didn't get initial access");
   [%expect {| |}]
 ;;

@@ -1,7 +1,7 @@
 (library
  (foreign_stubs
   (language c)
-  (names capsule stubs))
+  (names blocking_sync dynamic stubs))
  (name basement)
  (public_name basement)
  (ocamlopt_flags

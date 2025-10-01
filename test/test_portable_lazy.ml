@@ -39,14 +39,27 @@ let%expect_test "force always returns the same value" =
 let%expect_test "peek" =
   let t = Portable_lazy.from_fun (fun () -> 1) in
   let result = Portable_lazy.peek t in
-  print_s [%message "" ~peek:(result : int option)];
+  print_s [%message "" ~peek:(result : int or_null)];
   print_s [%message "" ~force:(Portable_lazy.force t : int)];
   let result = Portable_lazy.peek t in
-  print_s [%message "" ~peek:(result : int option)];
+  print_s [%message "" ~peek:(result : int or_null)];
   [%expect
     {|
     (peek ())
     (force 1)
     (peek (1))
+    |}]
+;;
+
+let%expect_test "relaxed value restriction applies (because it's covariant)" =
+  let t : type a. a list Portable_lazy.t = Portable_lazy.from_fun (fun () -> []) in
+  let result : int list = Portable_lazy.force t in
+  print_s [%message "" ~force:(result : _ list)];
+  let result : bool list = Portable_lazy.force t in
+  print_s [%message "" ~force:(result : _ list)];
+  [%expect
+    {|
+    (force ())
+    (force ())
     |}]
 ;;

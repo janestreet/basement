@@ -116,40 +116,21 @@ module Domain : sig
   type id = private int
 
   (** If busy-waiting, calling cpu_relax () between iterations will improve performance on
-      some CPU architectures. On runtime4, this is a noop. *)
+      some CPU architectures. When poll insertion is disabled, this is a polling point. *)
   val cpu_relax : unit -> unit
 
   val self : unit -> id
 
   module Safe : sig
     module DLS : sig
-      module Access : sig
-        type t
-
-        val for_initial_domain : t
-        [@@ppx_js_style.allow_redundant_modalities
-          (*_ For emphasis that this should definitely be nonportable *)]
-      end
-
       type 'a key = 'a Domain.DLS.key
 
-      exception Encapsulated of string
-
-      val access : (Access.t -> 'a) -> 'a
-      val access__local : (Access.t -> 'a) -> 'a
-
-      val new_key'
-        :  ?split_from_parent:('a -> Access.t -> 'a)
-        -> (Access.t -> 'a)
-        -> 'a key
-
       val new_key : ?split_from_parent:('a -> unit -> 'a) -> (unit -> 'a) -> 'a key
-      val get : Access.t -> 'a key -> 'a
-      val set : Access.t -> 'a key -> 'a -> unit
+      val get : 'a. 'a key -> 'a
+      val set : 'a. 'a key -> 'a -> unit
     end
 
     val at_exit : (unit -> unit) -> unit
-    val at_exit' : DLS.Access.t -> (unit -> unit) -> unit
   end
 end
 
@@ -211,38 +192,6 @@ module Format : sig
   (** Submodule containing non-backwards-compatible functions which enforce thread safety
       via modes. *)
   module Safe : sig
-    (** Like {!get_std_formatter}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [formatter] does not escape the current domain. This is
-        necessary as the [formatter] may contain functions which close over other data in
-        the current domain. *)
-    val get_std_formatter : Domain.Safe.DLS.Access.t -> formatter
-
-    (** Like {!get_err_formatter}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [formatter] does not escape the current domain. This is
-        necessary as the [formatter] may contain functions which close over other data in
-        the current domain. *)
-    val get_err_formatter : Domain.Safe.DLS.Access.t -> formatter
-
-    (** Like {!get_str_formatter}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [formatter] does not escape the current domain. This is
-        necessary as the [formatter] may contain functions which close over other data in
-        the current domain. *)
-    val get_str_formatter : Domain.Safe.DLS.Access.t -> formatter
-
-    (** Like {!get_stdbuf}, but can be called from any domain.
-
-        An additional [Domain.Safe.DLS.Access.t] argument is taken, which acts as a
-        witness that the returned [Buffer.t] does not escape the current domain. This is
-        necessary as the [Buffer.t] is mutable data which is not safe to share between
-        domains. *)
-    val get_stdbuf : Domain.Safe.DLS.Access.t -> Buffer.t
-
     (** Like {!make_synchronized_formatter}, but can be called from any domain.
 
         The provided closures must be [portable] as they will be called from other domains
@@ -307,12 +256,19 @@ module Modes : sig
 end
 
 module Obj : sig
-  external magic_portable : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
-  external magic_uncontended : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
-  external magic_unique : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
-  external magic_many : ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
-  external magic_unyielding : 'a -> 'a = "%identity"
-  external magic_at_unique : ('a[@local_opt]) -> ('b[@local_opt]) = "%identity"
+  external magic_portable : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
+  [@@layout_poly]
+
+  external magic_uncontended : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
+  [@@layout_poly]
+
+  external magic_unique : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
+  [@@layout_poly]
+
+  external magic_many : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
+  [@@layout_poly]
+
+  external magic_unyielding : 'a. 'a -> 'a = "%identity" [@@layout_poly]
 
   module Extension_constructor : sig
     val of_val : 'a -> extension_constructor

@@ -49,88 +49,85 @@ function caml_atomic_lxor_stub(ref, i) {
   return 0;
 }
 
-//Provides: CapsuleMutex
-class CapsuleMutex {
+//Provides: BlockingMutex
+class BlockingMutex {
   constructor() {
     this.locked = false;
   }
 }
 
-//Provides: caml_capsule_mutex_new
-//Requires: CapsuleMutex
-function caml_capsule_mutex_new(unit) {
-  return new CapsuleMutex();
+//Provides: caml_blocking_mutex_new
+//Requires: BlockingMutex
+function caml_blocking_mutex_new(unit) {
+  return new BlockingMutex();
 }
 
-//Provides: caml_capsule_mutex_lock
+//Provides: caml_blocking_mutex_lock
 //Requires: caml_raise_sys_error
-function caml_capsule_mutex_lock(t) {
+function caml_blocking_mutex_lock(t) {
   if (t.locked) caml_raise_sys_error("Mutex.lock: mutex already locked.");
   else t.locked = true;
   return 0;
 }
 
-//Provides: caml_capsule_mutex_unlock
-function caml_capsule_mutex_unlock(t) {
+//Provides: caml_blocking_mutex_unlock
+function caml_blocking_mutex_unlock(t) {
   t.locked = false;
   return 0;
 }
 
-//Provides: caml_capsule_condition_new
-function caml_capsule_condition_new(unit) {
+//Provides: caml_blocking_condition_new
+function caml_blocking_condition_new(unit) {
   return { condition: 1 };
 }
 
-//Provides: caml_capsule_condition_wait
+//Provides: caml_blocking_condition_wait
 //Requires: caml_raise_sys_error
-function caml_capsule_condition_wait(t, mutext) {
+function caml_blocking_condition_wait(t, mutext) {
   caml_raise_sys_error("Condition.wait: cannot wait.");
   return 0;
 }
 
-//Provides: caml_capsule_condition_broadcast
-function caml_capsule_condition_broadcast(t) {
+//Provides: caml_blocking_condition_broadcast
+function caml_blocking_condition_broadcast(t) {
   return 0;
 }
 
-//Provides: caml_capsule_condition_signal
-function caml_capsule_condition_signal(t) {
+//Provides: caml_blocking_condition_signal
+function caml_blocking_condition_signal(t) {
   return 0;
 }
 
-//Provides: CapsuleRwlock
-class CapsuleRwlock {
-  constructor() {
-    this.wrlocked = false;
-    this.rdlocks = 0;
-  }
+//Provides: caml_thread_yield
+function caml_thread_yield(unit) {
+  return 0;
 }
 
-//Provides: caml_capsule_rwlock_new
-//Requires: CapsuleRwlock
-function caml_capsule_rwlock_new(unit) {
-  return new CapsuleRwlock();
+//Provides: basement_dynamic_supported
+function basement_dynamic_supported(unit) {
+  return 0;
 }
 
-//Provides: caml_capsule_rwlock_wrlock
+//Provides: unsupported_dynamics
 //Requires: caml_raise_sys_error
-function caml_capsule_rwlock_wrlock(t) {
-  if (t.wrlocked || t.rdlocks > 0) caml_raise_sys_error("Rwlock.wrlock: rwlock already locked.");
-  else t.wrlocked = true;
-  return 0;
+function unsupported_dynamics() {
+  caml_raise_sys_error("Fiber-based dynamics are not supported in javascript");
 }
 
-//Provides: caml_capsule_rwlock_rdlock
-//Requires: caml_raise_sys_error
-function caml_capsule_rwlock_rdlock(t) {
-  if (t.wrlocked) caml_raise_sys_error("Rwlock.rdlock: rwlock already write locked.");
-  else t.rdlocks += 1;
-  return 0;
+//Provides: basement_alloc_stack_bind
+//Requires: unsupported_dynamics
+function basement_alloc_stack_bind(t1, t2, t3, t4, t5) {
+  unsupported_dynamics();
 }
 
-//Provides: caml_capsule_rwlock_unlock
-function caml_capsule_rwlock_unlock(t) {
-  if (t.wrlocked) t.wrlocked = false;
-  else t.rdlocks -= 1;
-  return 0;
+//Provides: basement_dynamic_make
+//Requires: unsupported_dynamics
+function basement_dynamic_make(t) {
+  unsupported_dynamics();
+}
+
+//Provides: basement_dynamic_get
+//Requires: unsupported_dynamics
+function basement_dynamic_get(t) {
+  unsupported_dynamics();
 }
