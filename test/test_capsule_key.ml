@@ -71,11 +71,9 @@ let%expect_test "[with_password_local] destroys the key but returns a local valu
       , Capsule.Password.box password ))
   in
   (* We can still access the data through the password. *)
-  let s =
-    Capsule.Data.Local.extract
-      x
-      ~password:(Capsule.Password.unbox password)
-      ~f:(fun x : string -> x.contents)
+  let { aliased = s } =
+    Capsule.Data.Local.extract x ~password:(Capsule.Password.unbox password) ~f:(fun x ->
+      { aliased = (x.contents : string) })
   in
   assert (s = "Local value")
 ;;

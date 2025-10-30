@@ -97,6 +97,8 @@ module Domain = struct
       let set = Domain.DLS.set
     end
 
+    module TLS = DLS
+
     let at_exit = Domain.at_exit
   end
 end

@@ -83,6 +83,10 @@ val initial : initial Access.boxed
     otherwise. *)
 val access_initial : (initial Access.boxed option -> 'a) -> 'a
 
+(** [access_initial_domain ~f] calls [f (This initial)] if run on the initial domain, or
+    [f Null] otherwise. *)
+val access_initial_domain : (initial Access.boxed option -> 'a) -> 'a
+
 (** Passwords represent permission to get access to a capsule. *)
 module Password : sig
   (** ['k t] is the type of "passwords" representing permission for the current thread to
@@ -120,17 +124,21 @@ module Password : sig
     val box : 'k t -> 'k boxed
     val unbox : 'k boxed -> 'k t
 
-    (** [borrow t f] calls [f] with the shared password [t] upgraded to unyielding. The
-        function [f] is itself unyielding, so cannot close over passwords. This allows the
-        borrowed password to be safely closed over in local parallel tasks, which receive
-        temporary read-only access to the capsule. *)
+    (** [borrow t f] calls [f] with the shared password [t] upgraded to [forkable]. The
+        function [f] is itself [forkable], so cannot close over passwords. This allows the
+        borrowed password to be safely closed over in parallel tasks, which receive
+        temporary read-only access to the capsule.
+
+        Note [f] cannot return the password at [forkable], as the result is [unforkable]. *)
     val borrow : 'a 'k. 'k t -> ('k t -> 'a) -> 'a
   end
 
   (** [shared t] downgrades a ['k] password to a ['k] shared password. *)
   val shared : 'k t -> 'k Shared.t
 
-  (** [with_current k f] calls [f] with a password for the current capsule [k]. *)
+  (** [with_current k f] calls [f] with a password for the current capsule [k].
+
+      Note [f] cannot return the [unforkable] password, as the result is [forkable]. *)
   val with_current : 'a 'k. 'k Access.t -> ('k t -> 'a) -> 'a
 end
 

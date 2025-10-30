@@ -39,7 +39,19 @@ type initial
 
 let initial = Access.(box (unsafe_mk ()))
 
-let access_initial =
+module TLS = Stdlib_shim.Domain.Safe.TLS
+
+let initial_key =
+  let key = TLS.new_key (fun _ -> false) in
+  TLS.set key true;
+  key
+;;
+
+let access_initial f =
+  if TLS.get initial_key then f (Some Access.(box (unsafe_mk ()))) else f None
+;;
+
+let access_initial_domain =
   if Stdlib_shim.runtime5 ()
   then
     fun [@inline] f ->

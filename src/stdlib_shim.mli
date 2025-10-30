@@ -130,6 +130,14 @@ module Domain : sig
       val set : 'a. 'a key -> 'a -> unit
     end
 
+    module TLS : sig
+      type 'a key
+
+      val new_key : ?split_from_parent:('a -> unit -> 'a) -> (unit -> 'a) -> 'a key
+      val get : 'a. 'a key -> 'a
+      val set : 'a. 'a key -> 'a -> unit
+    end
+
     val at_exit : (unit -> unit) -> unit
   end
 end
