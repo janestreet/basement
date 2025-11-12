@@ -87,6 +87,14 @@ val access_initial
   -> 'a @ contended local portable unique
   @@ portable
 
+(** [access_initial_domain ~f] calls [f (This initial)] if run on the initial domain, or
+    [f Null] otherwise. *)
+val access_initial_domain
+  :  (initial Access.boxed option @ local -> 'a @ contended local portable unique)
+     @ local once portable unyielding
+  -> 'a @ contended local portable unique
+  @@ portable
+
 (** Passwords represent permission to get access to a capsule. *)
 module Password : sig
   (** ['k t] is the type of "passwords" representing permission for the current thread to
@@ -98,11 +106,11 @@ module Password : sig
       with ['k]. The mode system prevents retaining the ['k t] after releasing access to
       the capsule. This guarantees that uncontended access to the capsule is only granted
       to one thread at a time. *)
-  type 'k t : void mod contended external_ portable
+  type 'k t : void mod contended external_ portable unyielding
 
   (** A boxed version of [Password.t] for places where you need a type with layout
       [value]. *)
-  type 'k boxed : value mod contended external_ portable
+  type 'k boxed : value mod contended external_ portable unyielding
 
   val box : 'k t @ local -> 'k boxed @ local @@ portable
   val unbox : 'k boxed @ local -> 'k t @ local @@ portable
@@ -115,23 +123,25 @@ module Password : sig
 
         Obtaining a ['k t] requires a ['k Key.t @ aliased] or read-acquiring the
         reader-writer lock associated with ['k]. *)
-    type 'k t : void mod contended external_ portable
+    type 'k t : void mod contended external_ portable unyielding
 
     (** A boxed version of [Password.Shared.t] for places where you need a type with
         layout [value]. *)
-    type 'k boxed : value mod contended external_ portable
+    type 'k boxed : value mod contended external_ portable unyielding
 
     val box : 'k t @ local -> 'k boxed @ local @@ portable
     val unbox : 'k boxed @ local -> 'k t @ local @@ portable
 
-    (** [borrow t f] calls [f] with the shared password [t] upgraded to unyielding. The
-        function [f] is itself unyielding, so cannot close over passwords. This allows the
-        borrowed password to be safely closed over in local parallel tasks, which receive
-        temporary read-only access to the capsule. *)
+    (** [borrow t f] calls [f] with the shared password [t] upgraded to [forkable]. The
+        function [f] is itself [forkable], so cannot close over passwords. This allows the
+        borrowed password to be safely closed over in parallel tasks, which receive
+        temporary read-only access to the capsule.
+
+        Note [f] cannot return the password at [forkable], as the result is [unforkable]. *)
     val borrow
       : ('a : value_or_null) 'k.
       'k t @ local
-      -> ('k t @ local unyielding -> 'a @ local unique) @ local once unyielding
+      -> ('k t @ forkable local -> 'a @ local unique) @ forkable local once
       -> 'a @ local unique
       @@ portable
   end
@@ -139,12 +149,14 @@ module Password : sig
   (** [shared t] downgrades a ['k] password to a ['k] shared password. *)
   val shared : 'k t @ local -> 'k Shared.t @ local @@ portable
 
-  (** [with_current k f] calls [f] with a password for the current capsule [k]. *)
+  (** [with_current k f] calls [f] with a password for the current capsule [k].
+
+      Note [f] cannot return the [unforkable] password, as the result is [forkable]. *)
   val with_current
     : ('a : value_or_null) 'k.
     'k Access.t
-    -> ('k t @ local -> 'a @ local unique unyielding) @ local once
-    -> 'a @ local unique unyielding
+    -> ('k t @ local -> 'a @ forkable local unique) @ local once
+    -> 'a @ forkable local unique
     @@ portable
 end
 
@@ -161,12 +173,12 @@ module Key : sig
       ['k t @ aliased] indicates that the key has been permanently shared, since it's
       avaiable [aliased] and therefore not available [unique]ly. Therefore, we can allow
       all threads read access to ['k]. *)
-  type 'k t : void mod contended external_ many portable unyielding
+  type 'k t : void mod contended external_ forkable many portable unyielding
 
   type packed = P : 'k t -> packed [@@unboxed]
 
   (** A boxed version of [Key.t] for places where you need a type with layout [value]. *)
-  type 'k boxed : value mod contended external_ many portable
+  type 'k boxed : value mod contended external_ forkable many portable
 
   val box : 'k t @ unique -> 'k boxed @ unique
   val unbox : 'k boxed @ unique -> 'k t @ unique
@@ -354,6 +366,13 @@ module Data : sig
     -> ('a, 'k) t @ once
     @@ portable
 
+  (** [create_unique f] runs [f] within the capsule ['k] and returns a pointer to the
+      result of [f]. *)
+  val create_unique
+    :  (unit -> 'a @ unique) @ local once portable
+    -> ('a, 'k) t @ unique
+    @@ portable
+
   (** [map ~password ~f t] applies [f] to the value of [p] within the capsule ['k] and
       returns a pointer to the result. *)
   val map
@@ -433,9 +452,9 @@ module Data : sig
   val extract_shared
     : ('a : value mod portable) 'b 'k.
     password:'k Password.Shared.t @ local
-    -> f:('a @ shared -> 'b @ contended portable) @ local once portable
+    -> f:('a @ shared -> 'b @ contended once portable unique) @ local once portable
     -> ('a, 'k) t
-    -> 'b @ contended portable
+    -> 'b @ contended once portable unique
     @@ portable
 
   module Shared : sig
@@ -487,9 +506,9 @@ module Data : sig
         and is marked [contended]. *)
     val extract
       :  password:'k Password.Shared.t @ local
-      -> f:('a -> 'b @ contended portable) @ local once portable
+      -> f:('a -> 'b @ contended once portable unique) @ local once portable
       -> ('a, 'k) t
-      -> 'b @ contended portable
+      -> 'b @ contended once portable unique
       @@ portable
 
     (** [inject v] is a pointer to an value [v] injected into the capsule ['k]. It's a
@@ -579,9 +598,10 @@ module Data : sig
           [portable] and is marked [contended]. *)
       val extract
         :  password:'k Password.Shared.t @ local
-        -> f:('a @ local -> 'b @ contended local portable) @ local once portable
+        -> f:('a @ local -> 'b @ contended local once portable unique)
+           @ local once portable
         -> ('a, 'k) t @ local
-        -> 'b @ contended local portable
+        -> 'b @ contended local once portable unique
         @@ portable
 
       (** [inject v] is a pointer to an value [v] injected into the capsule ['k]. It's a
@@ -707,9 +727,9 @@ module Data : sig
         marked [contended]. *)
     val extract
       :  password:'k Password.t @ local
-      -> f:('a @ local -> 'b @ contended local portable) @ local once portable
+      -> f:('a @ local -> 'b @ contended local once portable unique) @ local once portable
       -> ('a, 'k) t @ local
-      -> 'b @ contended local portable
+      -> 'b @ contended local once portable unique
       @@ portable
 
     (** [inject v] is a pointer to an value [v] injected into the capsule ['k]. It's a
@@ -769,9 +789,44 @@ module Data : sig
     val extract_shared
       : ('a : value mod portable) 'b 'k.
       password:'k Password.Shared.t @ local
-      -> f:('a @ local shared -> 'b @ contended local portable) @ local once portable
+      -> f:('a @ local shared -> 'b @ contended local once portable unique)
+         @ local once portable
       -> ('a, 'k) t @ local
-      -> 'b @ contended local portable
+      -> 'b @ contended local once portable unique
+      @@ portable
+  end
+
+  module Or_null : sig
+    type ('a : value_or_null
+         , 'k)
+         t :
+         value_or_null mod everything with 'a @@ contended portable
+
+    (** [wrap ~access v] returns a pointer to the value [v], which lives in the capsule
+        ['k]. ['k] is always the current capsule. *)
+    val wrap : ('a : value_or_null) 'k. access:'k Access.t -> 'a -> ('a, 'k) t @@ portable
+
+    (** [unwrap ~access t] returns the value of [t], which lives in the capsule ['k]. ['k]
+        is always the current capsule. *)
+    val unwrap
+      : ('a : value_or_null) 'k.
+      access:'k Access.t -> ('a, 'k) t -> 'a
+      @@ portable
+
+    (** [create f] runs [f] within the capsule ['k] and returns a pointer to the result of
+        [f]. *)
+    val create
+      : ('a : value_or_null) 'k.
+      (unit -> 'a) @ local once portable -> ('a, 'k) t
+      @@ portable
+
+    (** [project t] returns the value of [t]. The result is within ['k], so is marked
+        [contended]. The value is required to always be [portable], so unlike [extract],
+        [project] does not require permission to access ['k]. This is safe because all
+        accesses to the value happen only after it's marked [contended]. *)
+    val project
+      : ('a : value_or_null mod portable) 'k.
+      ('a, 'k) t -> 'a @ contended
       @@ portable
   end
 end

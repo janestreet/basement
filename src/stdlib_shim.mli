@@ -21,7 +21,12 @@ external raise_notrace : exn -> 'a @ portable unique @@ portable = "%raise_notra
 val failwith : string -> 'a @ portable unique @@ portable
 
 module Atomic : sig @@ portable
-  type 'a t := 'a Stdlib.Atomic.t
+  type ('a : value_or_null) t := 'a Stdlib.Atomic.t
+
+  external get_contended
+    : ('a : value_or_null).
+    'a t @ contended local -> 'a @ contended
+    = "%atomic_load"
 
   module Local : sig
     external make : 'a -> ('a t[@local_opt]) = "%makemutable"
@@ -46,33 +51,6 @@ module Atomic : sig @@ portable
     external logxor : int t @ contended local -> int -> unit = "%atomic_lxor"
     val incr : int t @ contended local -> unit
     val decr : int t @ contended local -> unit
-  end
-
-  module Contended : sig
-    external get
-      : ('a : value mod contended).
-      'a t @ contended local -> 'a
-      = "%atomic_load"
-
-    external set
-      : ('a : value mod portable).
-      'a t @ contended local -> 'a -> unit
-      = "%atomic_set"
-
-    external exchange
-      : ('a : value mod contended portable).
-      'a t @ contended local -> 'a -> 'a
-      = "%atomic_exchange"
-
-    external compare_and_set
-      : ('a : value mod portable).
-      'a t @ contended local -> 'a -> 'a -> bool
-      = "%atomic_cas"
-
-    external compare_exchange
-      : ('a : value mod contended portable).
-      'a t @ contended local -> 'a -> 'a -> 'a
-      = "%atomic_compare_exchange"
   end
 
   module Expert : sig
@@ -150,6 +128,19 @@ module Domain : sig
   module Safe : sig
     module DLS : sig
       type 'a key : value mod contended portable = 'a Domain.DLS.key
+
+      val new_key
+        :  ?split_from_parent:('a -> (unit -> 'a) @ once portable) @ portable
+        -> (unit -> 'a) @ portable
+        -> 'a key
+        @@ portable
+
+      val get : ('a : value mod portable). 'a key -> 'a @ contended @@ portable
+      val set : ('a : value mod contended). 'a key -> 'a @ portable -> unit @@ portable
+    end
+
+    module TLS : sig
+      type 'a key : value mod contended portable
 
       val new_key
         :  ?split_from_parent:('a -> (unit -> 'a) @ once portable) @ portable
@@ -282,28 +273,35 @@ end
 
 module Modes : sig
   module Global : sig
-    type 'a t = { global_ global : 'a } [@@unboxed]
+    type ('a : value_or_null) t = { global_ global : 'a } [@@unboxed]
   end
 
   module Portable : sig
-    type 'a t : value mod portable = { portable : 'a @@ portable } [@@unboxed]
+    type ('a : value_or_null) t : value_or_null mod portable =
+      { portable : 'a @@ portable }
+    [@@unboxed]
   end
 
   module Contended : sig
-    type 'a t : value mod contended = { contended : 'a @@ contended } [@@unboxed]
+    type ('a : value_or_null) t : value_or_null mod contended =
+      { contended : 'a @@ contended }
+    [@@unboxed]
   end
 
   module Portended : sig
-    type 'a t : value mod contended portable = { portended : 'a @@ contended portable }
+    type ('a : value_or_null) t : value_or_null mod contended portable =
+      { portended : 'a @@ contended portable }
     [@@unboxed]
   end
 
   module Aliased : sig
-    type 'a t = { aliased : 'a @@ aliased } [@@unboxed]
+    type ('a : value_or_null) t : value_or_null mod aliased = { aliased : 'a @@ aliased }
+    [@@unboxed]
   end
 
   module Many : sig
-    type 'a t = { many : 'a @@ many } [@@unboxed]
+    type ('a : value_or_null) t : value_or_null mod many = { many : 'a @@ many }
+    [@@unboxed]
   end
 end
 
@@ -317,6 +315,12 @@ module Obj : sig @@ portable
   external magic_uncontended
     : ('a : any).
     ('a[@local_opt]) @ contended -> ('a[@local_opt])
+    = "%identity"
+  [@@layout_poly]
+
+  external magic_read_write_uncontended
+    : ('a : any).
+    ('a[@local_opt]) @ immutable -> ('a[@local_opt])
     = "%identity"
   [@@layout_poly]
 
@@ -339,7 +343,7 @@ module Obj : sig @@ portable
   [@@layout_poly]
 
   module Extension_constructor : sig
-    val of_val : 'a @ contended -> extension_constructor
+    val of_val : 'a @ immutable -> extension_constructor
   end
 end
 

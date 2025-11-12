@@ -40,7 +40,19 @@ type initial
 
 let initial = Access.(box (unsafe_mk ()))
 
-let access_initial =
+module TLS = Stdlib_shim.Domain.Safe.TLS
+
+let initial_key =
+  let key = TLS.new_key (fun _ -> false) in
+  TLS.set key true;
+  key
+;;
+
+let access_initial f = exclave_
+  if TLS.get initial_key then f (Some Access.(box (unsafe_mk ()))) else f None
+;;
+
+let access_initial_domain =
   if Stdlib_shim.runtime5 ()
   then
     fun [@inline] f -> exclave_
@@ -51,8 +63,8 @@ let access_initial =
 ;;
 
 module Password : sig
-  type 'k t : void mod contended external_ portable
-  type 'k boxed : value mod contended external_ portable
+  type 'k t : void mod contended external_ portable unyielding
+  type 'k boxed : value mod contended external_ portable unyielding
 
   (* Can break the soundness of the API. *)
   val unsafe_mk : unit -> 'k t @ local @@ portable
@@ -60,8 +72,8 @@ module Password : sig
   val unbox : 'k boxed @ local -> 'k t @ local
 
   module Shared : sig
-    type 'k t : void mod contended external_ portable
-    type 'k boxed : value mod contended external_ portable
+    type 'k t : void mod contended external_ portable unyielding
+    type 'k boxed : value mod contended external_ portable unyielding
 
     val box : 'k t @ local -> 'k boxed @ local @@ portable
     val unbox : 'k boxed @ local -> 'k t @ local @@ portable
@@ -69,7 +81,7 @@ module Password : sig
     val borrow
       : ('a : value_or_null) 'k.
       'k t @ local
-      -> ('k t @ local unyielding -> 'a @ local unique) @ local once unyielding
+      -> ('k t @ forkable local -> 'a @ local unique) @ forkable local once
       -> 'a @ local unique
       @@ portable
 
@@ -82,11 +94,11 @@ module Password : sig
   val with_current
     : ('a : value_or_null) 'k.
     'k Access.t
-    -> ('k t @ local -> 'a @ local unique unyielding) @ local once
-    -> 'a @ local unique unyielding
+    -> ('k t @ local -> 'a @ forkable local unique) @ local once
+    -> 'a @ forkable local unique
     @@ portable
 end = struct
-  type 'k t : void mod contended external_ portable
+  type 'k t : void mod contended external_ portable unyielding
   type 'k boxed = unit
 
   external unsafe_mk : unit -> 'k t @@ portable = "%unbox_unit"
@@ -95,7 +107,7 @@ end = struct
   let unbox () = unsafe_mk ()
 
   module Shared = struct
-    type 'k t : void mod contended external_ portable
+    type 'k t : void mod contended external_ portable unyielding
     type 'k boxed = unit
 
     external unsafe_mk : unit -> 'k t @@ portable = "%unbox_unit"
@@ -172,6 +184,7 @@ module Data = struct
   let[@inline] unwrap_shared ~access:_ t = unsafe_get t
   let[@inline] create f = unsafe_mk (f ())
   let[@inline] create_once f = unsafe_mk_once (f ())
+  let[@inline] create_unique f = unsafe_mk_unique (f ())
   let[@inline] map ~password:_ ~f t = unsafe_mk (f (unsafe_get t))
 
   let[@inline] fst t =
@@ -280,12 +293,36 @@ module Data = struct
     let[@inline] map_shared ~password:_ ~f t = exclave_ unsafe_mk (f (unsafe_get t))
     let[@inline] extract_shared ~password:_ ~f t = exclave_ f (unsafe_get t)
   end
+
+  module Or_null = struct
+    type ('a : value_or_null
+         , 'k)
+         t :
+         value_or_null mod everything with 'a @@ contended portable
+
+    external unsafe_mk
+      : ('a : value_or_null) 'k.
+      ('a[@local_opt]) -> (('a, 'k) t[@local_opt])
+      @@ portable
+      = "%identity"
+
+    external unsafe_get
+      : ('a : value_or_null) 'k.
+      (('a, 'k) t[@local_opt]) -> ('a[@local_opt])
+      @@ portable
+      = "%identity"
+
+    let[@inline] wrap ~access:_ t = unsafe_mk t
+    let[@inline] unwrap ~access:_ t = unsafe_get t
+    let[@inline] create f = unsafe_mk (f ())
+    let project = unsafe_get
+  end
 end
 
 module Key : sig
-  type 'k t : void mod contended external_ many portable unyielding
+  type 'k t : void mod contended external_ forkable many portable unyielding
   type packed = P : 'k t -> packed [@@unboxed]
-  type 'k boxed : value mod contended external_ many portable
+  type 'k boxed : value mod contended external_ forkable many portable
 
   val unsafe_mk : unit -> 'k t @ unique @@ portable
   val box : 'k t @ unique -> 'k boxed @ unique
@@ -348,7 +385,7 @@ module Key : sig
   val globalize_unique : 'k t @ local unique -> 'k t @ unique @@ portable
   val destroy : 'k t @ unique -> 'k Access.t @@ portable
 end = struct
-  type 'k t : void mod contended external_ many portable unyielding
+  type 'k t : void mod contended external_ forkable many portable unyielding
   type packed = P : 'k t -> packed [@@unboxed]
   type 'k boxed = unit
 

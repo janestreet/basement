@@ -12,7 +12,13 @@ external raise_notrace : exn -> 'a @ portable unique @@ portable = "%raise_notra
 let failwith s = raise (Failure s)
 
 module Atomic = struct
-  type 'a t = 'a Stdlib.Atomic.t
+  type ('a : value_or_null) t = 'a Stdlib.Atomic.t
+
+  external get_contended
+    : ('a : value_or_null).
+    'a t @ contended local -> 'a @ contended
+    @@ portable
+    = "%atomic_load"
 
   module Local = struct
     external make : 'a -> ('a t[@local_opt]) @@ portable = "%makemutable"
@@ -60,38 +66,6 @@ module Atomic = struct
     let decr r = sub r 1
   end
 
-  module Contended = struct
-    external get
-      : ('a : value mod contended).
-      'a t @ contended local -> 'a
-      @@ portable
-      = "%atomic_load"
-
-    external set
-      : ('a : value mod portable).
-      'a t @ contended local -> 'a -> unit
-      @@ portable
-      = "%atomic_set"
-
-    external exchange
-      : ('a : value mod contended portable).
-      'a t @ contended local -> 'a -> 'a
-      @@ portable
-      = "%atomic_exchange"
-
-    external compare_and_set
-      : ('a : value mod portable).
-      'a t @ contended local -> 'a -> 'a -> bool
-      @@ portable
-      = "%atomic_cas"
-
-    external compare_exchange
-      : ('a : value mod contended portable).
-      'a t @ contended local -> 'a -> 'a -> 'a
-      @@ portable
-      = "%atomic_compare_exchange"
-  end
-
   module Expert = struct
     external fenceless_get : 'a t @ local -> 'a @@ portable = "%field0"
     external fenceless_set : 'a t @ local -> 'a -> unit @@ portable = "%setfield0"
@@ -137,17 +111,7 @@ module Map = struct
   module MakePortable = Map.MakePortable
 end
 
-module Modes = struct
-  include Modes
-
-  module Aliased = struct
-    type 'a t = { aliased : 'a @@ aliased } [@@unboxed]
-  end
-
-  module Many = struct
-    type 'a t = { many : 'a @@ many } [@@unboxed]
-  end
-end
+module Modes = Modes
 
 module MoreLabels = struct
   module Hashtbl = struct
@@ -179,6 +143,13 @@ module Obj = struct
     = "%identity"
   [@@layout_poly]
 
+  external magic_read_write_uncontended
+    : ('a : any).
+    ('a[@local_opt]) @ immutable -> ('a[@local_opt])
+    @@ portable
+    = "%identity"
+  [@@layout_poly]
+
   external magic_unique
     : ('a : any).
     ('a[@local_opt]) -> ('a[@local_opt]) @ unique
@@ -201,7 +172,9 @@ module Obj = struct
   [@@layout_poly]
 
   module Extension_constructor = struct
-    let of_val x = Stdlib.Obj.Extension_constructor.of_val (magic_uncontended x)
+    let of_val x =
+      Stdlib.Obj.Extension_constructor.of_val (magic_read_write_uncontended x)
+    ;;
   end
 end
 

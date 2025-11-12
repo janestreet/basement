@@ -1,32 +1,41 @@
 @@ portable
 
-type 'a t = 'a Stdlib_shim.Modes.Portable.t Atomic.t Stdlib_shim.Modes.Contended.t
+type ('a : value_or_null) t =
+  'a Stdlib_shim.Modes.Portable.t Atomic.t Stdlib_shim.Modes.Contended.t
 
-external make : 'a @ contended portable -> ('a t[@local_opt]) = "%makemutable"
+external make
+  : ('a : value_or_null).
+  'a @ contended portable -> ('a t[@local_opt])
+  = "%makemutable"
 
 external make_contended
-  :  'a @ contended portable
-  -> ('a t[@local_opt])
+  : ('a : value_or_null).
+  'a @ contended portable -> ('a t[@local_opt])
   = "caml_atomic_make_contended"
 
-external get : 'a t @ local -> 'a @ contended portable = "%atomic_load"
-external set : 'a t @ local -> 'a @ contended portable -> unit = "%atomic_set"
+external get
+  : ('a : value_or_null).
+  'a t @ local -> 'a @ contended portable
+  = "%atomic_load"
+
+external set
+  : ('a : value_or_null).
+  'a t @ local -> 'a @ contended portable -> unit
+  = "%atomic_set"
 
 external exchange
-  :  'a t @ local
-  -> 'a @ contended portable
-  -> 'a @ contended portable
+  : ('a : value_or_null).
+  'a t @ local -> 'a @ contended portable -> 'a @ contended portable
   = "%atomic_exchange"
 
 external compare_and_set
-  :  'a t @ local
-  -> 'a @ contended portable
-  -> 'a @ contended portable
-  -> bool
+  : ('a : value_or_null).
+  'a t @ local -> 'a @ contended portable -> 'a @ contended portable -> bool
   = "%atomic_cas"
 
 external compare_exchange
-  :  'a t @ local
+  : ('a : value_or_null).
+  'a t @ local
   -> 'a @ contended portable
   -> 'a @ contended portable
   -> 'a @ contended portable
@@ -42,6 +51,13 @@ val incr : int t @ local -> unit
 val decr : int t @ local -> unit
 
 module Expert : sig
-  external fenceless_get : 'a t @ local -> 'a @ contended portable = "%field0"
-  external fenceless_set : 'a t @ local -> 'a @ contended portable -> unit = "%setfield0"
+  external fenceless_get
+    : ('a : value_or_null).
+    'a t @ local -> 'a @ contended portable
+    = "%field0"
+
+  external fenceless_set
+    : ('a : value_or_null).
+    'a t @ local -> 'a @ contended portable -> unit
+    = "%setfield0"
 end
