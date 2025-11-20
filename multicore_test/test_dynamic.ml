@@ -4,7 +4,7 @@ open Basement
 open Await
 
 let%expect_test "set_root from two threads" =
-  let%with.tilde.stack conc = Concurrent_in_thread.with_concurrent Terminator.never in
+  let%with.tilde.stack conc = Concurrent_in_thread.with_blocking Terminator.never in
   let dynamic = Dynamic.make 0 in
   let barrier = Barrier.create 2 in
   let result1 : Sexp.t Stdlib.Atomic.t = Stdlib.Atomic.make (Sexp.Atom "start") in
@@ -55,7 +55,7 @@ let%expect_test "set_root from two threads" =
 ;;
 
 let%expect_test "with_temporarily from two threads" =
-  let%with.tilde.stack conc = Concurrent_in_thread.with_concurrent Terminator.never in
+  let%with.tilde.stack conc = Concurrent_in_thread.with_blocking Terminator.never in
   let dynamic = Dynamic.make 0 in
   let barrier = Barrier.create 2 in
   let result1 = Stdlib.Atomic.make (0, 0) in

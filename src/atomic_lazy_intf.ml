@@ -11,8 +11,8 @@
     library, which implements [S_any] below using a slightly less efficient
     representation. *)
 
-(*_ NOTE: Do *not* rearrange the signatures below without considering how it affects
-    the magic in [atomic_lazy.ml]. *)
+(*_ NOTE: Do *not* rearrange the signatures below without considering how it affects the
+    magic in [atomic_lazy.ml]. *)
 
 (** The nonportable interface to [Atomic_lazy]. *)
 module type S_any_nonportable = sig @@ portable

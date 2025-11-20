@@ -161,9 +161,9 @@ module%template _ = Test_lazy [@mode portable] (struct
     let globalize = (globalize [@mode contended])
   end)
 
-(* Example of [Atomic_lazy] being used for mode-polymorphism; the main novel result
-   is that [of_lazy] and [fixed_point] below can be defined mode-polymorphically (rather
-   than ad-hoc). *)
+(* Example of [Atomic_lazy] being used for mode-polymorphism; the main novel result is
+   that [of_lazy] and [fixed_point] below can be defined mode-polymorphically (rather than
+   ad-hoc). *)
 
 module%template Portable = struct
   let wrap = Fn.id

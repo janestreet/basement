@@ -7,9 +7,7 @@ module Spin_barrier = Portable_test_helpers.Barrier
 let%expect_test "if multiple threads force at the same time, the lazy still always \
                  returns the same value"
   =
-  let%with.tilde.stack conc =
-    Concurrent_in_thread.with_concurrent Await.Terminator.never
-  in
+  let%with.tilde.stack conc = Concurrent_in_thread.with_blocking Await.Terminator.never in
   let t = Portable_lazy.from_fun (fun () -> Portable_atomic.make 0) in
   let nthreads = 32 in
   Concurrent.with_scope conc () ~f:(fun s ->
@@ -23,14 +21,12 @@ let%expect_test "if multiple threads force at the same time, the lazy still alwa
 ;;
 
 let%expect_test "if one thread forces while another is forcing, that thread blocks" =
-  let%with.tilde.stack conc =
-    Concurrent_in_thread.with_concurrent Await.Terminator.never
-  in
+  let%with.tilde.stack conc = Concurrent_in_thread.with_blocking Await.Terminator.never in
   let barrier = Spin_barrier.create 2 in
   let t =
     Portable_lazy.from_fun (fun () ->
       Spin_barrier.await barrier;
-      (* Allow a context switch if we're running without parallelism enabled  *)
+      (* Allow a context switch if we're running without parallelism enabled *)
       Thread.yield ();
       Portable_atomic.make 0)
   in
@@ -45,9 +41,7 @@ let%expect_test "if one thread forces while another is forcing, that thread bloc
 let%expect_test "if multiple threads force at the same time, the thunk is only called \
                  once"
   =
-  let%with.tilde.stack conc =
-    Concurrent_in_thread.with_concurrent Await.Terminator.never
-  in
+  let%with.tilde.stack conc = Concurrent_in_thread.with_blocking Await.Terminator.never in
   let times_force_called = Portable_atomic.make 0 in
   let t = Portable_lazy.from_fun (fun () -> Portable_atomic.incr times_force_called) in
   let nthreads = 32 in

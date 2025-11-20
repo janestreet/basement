@@ -1,8 +1,8 @@
 include Dynamic_intf
 
 module Fiber_dynamic : Dynamic = struct
-  (* Stacks are represented as tagged pointers, so do not keep the fiber alive.
-     We must not enter the GC between the creation and use of a [stack]. *)
+  (* Stacks are represented as tagged pointers, so do not keep the fiber alive. We must
+     not enter the GC between the creation and use of a [stack]. *)
   type (-'a, +'b) stack : immediate
   type last_fiber : immediate
   type (-'a, +'b) cont
@@ -42,9 +42,9 @@ module Fiber_dynamic : Dynamic = struct
         @@ portable
         = "%runstack"
 
-      (* Allocate a stack and immediately run [f x] on it with [d] bound to [v].
-         We must not enter the GC between [alloc_stack_dyn] and [runstack].
-         [with_stack_dyn] is marked as [@inline never] to avoid reordering. *)
+      (* Allocate a stack and immediately run [f x] on it with [d] bound to [v]. We must
+         not enter the GC between [alloc_stack_dyn] and [runstack]. [with_stack_dyn] is
+         marked as [@inline never] to avoid reordering. *)
       let[@inline never] with_stack_dyn valuec exnc effc d v f x =
         runstack (alloc_stack_dyn valuec exnc effc d v) f x
       ;;

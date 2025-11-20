@@ -5,12 +5,10 @@ module T = struct
   type ('a : value_or_null) inner =
     | Uncomputed of ('a t -> 'a)
     | Computing
-    | Awaiting :
-        ('a : value_or_null) 'k.
-        { mutex : 'k Mutex.t
-        ; condition : 'k Condition.t
+    | Awaiting of
+        { mutex : Mutex.t
+        ; condition : Condition.t
         }
-        -> 'a inner
     | Computed of 'a
     | Error of exn
 
@@ -38,21 +36,20 @@ module T = struct
     | Error exn -> raise exn
     | Computing ->
       (* Someone else is forcing the lazy. Block until they're done *)
-      let (P key) = Capsule.create () in
-      let mutex = Mutex.create key in
+      let mutex = Mutex.create () in
       let condition = Condition.create () in
       let _ : bool =
         Atomic.compare_and_set atomic Computing (Awaiting { mutex; condition })
       in
       (* Either someone else already set the state to [Awaiting] or the computation was
-         completed.  This can only happen to us once, so we just try again without any
+         completed. This can only happen to us once, so we just try again without any
          calls to cpu_relax. *)
       force t
     | Awaiting { mutex; condition } ->
-      Mutex.with_key mutex ~f:(fun key ->
+      Mutex.with_lock mutex ~f:(fun () ->
         match Atomic.get atomic with
-        | Awaiting _ -> #((), Condition.wait condition ~mutex key)
-        | Computed _ | Error _ | Computing | Uncomputed _ -> #((), key));
+        | Awaiting _ -> Condition.wait condition ~mutex
+        | Computed _ | Error _ | Computing | Uncomputed _ -> ());
       force t
     | Uncomputed f as uncomputed ->
       let computing = Computing in
@@ -100,14 +97,13 @@ module T = struct
   ;;
 end
 
-(* Below is unsafe magic, applied safely, to treat ['a t] as covariant
-   in ['a], despite the ['a t] type not being inferrable as covariant.
+(* Below is unsafe magic, applied safely, to treat ['a t] as covariant in ['a], despite
+   the ['a t] type not being inferrable as covariant.
 
-   The safety of this magic hinges on the fact that the operations exposed
-   in [S] are covariant in ['a]. (An example of an operation that wouldn't
-   be covariant in ['a]: [val set : 'a t -> 'a -> unit], that sets the
-   value of a lazy to something other than the computation it was originally
-   specified as.)
+   The safety of this magic hinges on the fact that the operations exposed in [S] are
+   covariant in ['a]. (An example of an operation that wouldn't be covariant in ['a]:
+   [val set : 'a t -> 'a -> unit], that sets the value of a lazy to something other than
+   the computation it was originally specified as.)
 *)
 
 external magically_covariant
@@ -118,10 +114,9 @@ external magically_covariant
 module Nonportable = (val magically_covariant (module T))
 
 (* Below is unsafe magic, applied safely, to produce a portable interface into
-   [Atomic_lazy]. The type-safetyness of this magic is due to [S_nonportable]
-   and [S_portable] having the same functions in the same order, and the
-   mode-safetyness is justified by a non-magic implementation of the full interface
-   in the test suite. *)
+   [Atomic_lazy]. The type-safetyness of this magic is due to [S_nonportable] and
+   [S_portable] having the same functions in the same order, and the mode-safetyness is
+   justified by a non-magic implementation of the full interface in the test suite. *)
 
 module type S_nonportable_concrete =
   S_nonportable with type ('a : value_or_null) t := 'a Nonportable.t

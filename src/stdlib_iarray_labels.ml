@@ -79,23 +79,20 @@ external unsafe_set_mutable
    these can either make a local mutable array or mutate its contents, and if
    not careful, this can lead to an array's contents pointing forwards. *)
 external make_mutable_local
-  :  int
-  -> local_ 'a
-  -> local_ 'a array
+  : ('a : value_or_null mod separable).
+  int -> local_ 'a -> local_ 'a array
   @@ portable
   = "caml_make_local_vect"
 
 external unsafe_of_local_array
-  :  local_ 'a array
-  -> local_ 'a iarray
+  : ('a : value_or_null mod separable).
+  local_ 'a array -> local_ 'a iarray
   @@ portable
   = "%array_to_iarray"
 
 external unsafe_set_local
-  :  local_ 'a array
-  -> int
-  -> local_ 'a
-  -> unit
+  : ('a : value_or_null mod separable).
+  local_ 'a array -> int -> local_ 'a -> unit
   @@ portable
   = "%array_unsafe_set"
 
@@ -108,7 +105,11 @@ external unsafe_set_local
    inline both [unsafe_init_local] *and* [f]. *)
 
 (** Precondition: [l >= 0]. *)
-let[@inline always] unsafe_init_local l (local_ (f : int -> local_ 'a)) = exclave_
+let[@inline always] unsafe_init_local
+  (type a : value_or_null mod separable)
+  l
+  (local_ (f : int -> local_ a))
+  = exclave_
   if l = 0
   then unsafe_of_local_array [||]
   else (

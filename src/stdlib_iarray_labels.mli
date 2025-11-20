@@ -34,7 +34,9 @@ external ( .:() ) : ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array
 val init : int -> f:local_ (int -> 'a) -> 'a iarray
 
 (** The locally-allocating version of [init]. *)
-val init_local : int -> f:local_ (int -> local_ 'a) -> local_ 'a iarray
+val init_local
+  : ('a : value_or_null mod separable).
+  int -> f:local_ (int -> local_ 'a) -> local_ 'a iarray
 
 (** [append v1 v2] returns a fresh immutable array containing the concatenation of the
     immutable arrays [v1] and [v2].
