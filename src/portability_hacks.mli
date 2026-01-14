@@ -121,10 +121,7 @@ external magic_portable__needs_portable_functors : 'a -> 'a = "%identity"
     what it means to be [cocontended]. *)
 external magic_uncontended__promise_deeply_immutable : 'a -> 'a = "%identity"
 
-(** Unsafely assert that a value is portable, but that showing such requires the ability
-    for packing of first-class modules to be portable. *)
-external magic_portable__first_class_module : 'a -> 'a = "%identity"
-
-(** Unsafely assert that a value is uncontended, but that showing such requires the
-    ability for packed first-class modules to cross contention. *)
-external magic_uncontended__first_class_module : 'a -> 'a = "%identity"
+(** Similar to [magic_uncontended__promise_deeply_immutable] but for first-class modules.
+    We distinguish the two as the work needed in the compiler to support them are
+    different. *)
+external magic_uncontended__promise_deeply_immutable_module : 'a -> 'a = "%identity"

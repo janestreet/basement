@@ -1,18 +1,9 @@
 external yield : unit -> unit = "caml_thread_yield"
-external unsafe_key : unit -> 'k Capsule.Key.t = "%identity"
-external unsafe_password : unit -> 'k Capsule.Password.t = "%identity"
 
-type never = |
-
-(* Like [Stdlib.raise], but [portable], and the value it never returns is also [portable unique] *)
+(* Like [Stdlib.raise], but [portable], and the value it never returns is also
+   [portable unique] *)
 external reraise : 'a. exn -> 'a = "%reraise"
 
-let reraise_void (type r) exn : r =
-  match reraise exn with
-  | (_ : never) -> .
-;;
-
-(* Like [Stdlib.Mutex], but [portable]. *)
 module M = struct
   type t
 
@@ -22,7 +13,7 @@ module M = struct
 end
 
 module Mutex = struct
-  type mutex =
+  type t =
     { mutex : M.t
     ; mutable poisoned : bool
     }
@@ -30,54 +21,28 @@ module Mutex = struct
     "Unsafe mode crossing by design. The mutable [poisoned] field is protected by the \
      [mutex]. "]
 
-  type 'k t = mutex
-  type packed = P : 'k t -> packed [@@unboxed]
-
-  let[@inline] create _ = { mutex = M.create (); poisoned = false }
+  let[@inline] create () = { mutex = M.create (); poisoned = false }
 
   exception Poisoned
 
-  let[@inline never] poison_and_reraise : type a k. k t -> exn:exn -> a =
-    fun t ~exn ->
+  let[@inline never] poison_and_reraise t ~exn =
     t.poisoned <- true;
     M.unlock t.mutex;
     reraise exn
   ;;
 
-  let[@inline] with_lock : type a k. k t -> f:(k Capsule.Password.t -> a) -> a =
-    fun t ~f ->
+  let[@inline] with_lock t ~f =
     M.lock t.mutex;
     match t.poisoned with
     | true ->
       M.unlock t.mutex;
       reraise Poisoned
     | false ->
-      let pw : k Capsule.Password.t = unsafe_password () in
-      (match f pw with
+      (match f () with
        | x ->
          M.unlock t.mutex;
          x
        | exception exn -> poison_and_reraise t ~exn [@nontail])
-  ;;
-
-  let[@inline] with_key : type a k. k t -> f:(k Capsule.Key.t -> a * k Capsule.Key.t) -> a
-    =
-    fun t ~f ->
-    M.lock t.mutex;
-    match t.poisoned with
-    | true ->
-      M.unlock t.mutex;
-      reraise Poisoned
-    | false ->
-      let key : k Capsule.Key.t = unsafe_key () in
-      (match f key with
-       | x, _key ->
-         M.unlock t.mutex;
-         x
-       | exception exn ->
-         t.poisoned <- true;
-         M.unlock t.mutex;
-         reraise exn)
   ;;
 
   let[@inline] destroy t =
@@ -85,33 +50,32 @@ module Mutex = struct
     match t.poisoned with
     | true ->
       M.unlock t.mutex;
-      reraise_void Poisoned
+      reraise Poisoned
     | false ->
       t.poisoned <- true;
-      M.unlock t.mutex;
-      unsafe_key ()
+      M.unlock t.mutex
   ;;
 end
 
 module Condition = struct
-  type 'k t
+  type t
 
-  external create : unit -> 'k t = "caml_blocking_condition_new"
-  external wait : 'k t -> M.t -> unit = "caml_blocking_condition_wait"
-  external signal : 'k t -> unit = "caml_blocking_condition_signal"
-  external broadcast : 'k t -> unit = "caml_blocking_condition_broadcast"
+  external create : unit -> t = "caml_blocking_condition_new"
+  external wait : t -> M.t -> unit = "caml_blocking_condition_wait"
+  external signal : t -> unit = "caml_blocking_condition_signal"
+  external broadcast : t -> unit = "caml_blocking_condition_broadcast"
 
-  let[@inline] wait t ~(mutex : 'k Mutex.t) key =
-    (* Check that the mutex is not poisoned. It's safe to do so without locking:
-       either we hold the [key] because it's locked, or because it's poisoned. *)
+  let[@inline] wait t ~(mutex : Mutex.t) =
+    (* Check that the mutex is not poisoned. It's safe to do so without locking: either we
+       hold the [key] because it's locked, or because it's poisoned. *)
     match mutex.poisoned with
-    | true -> reraise_void Mutex.Poisoned
+    | true -> reraise Mutex.Poisoned
     | false ->
       wait t mutex.mutex;
-      (* Check that the mutex wasn't poisoned again while we were waiting.
-         If it was, we can't return the key. *)
+      (* Check that the mutex wasn't poisoned again while we were waiting. If it was, we
+         can't return the key. *)
       (match mutex.poisoned with
-       | true -> reraise_void Mutex.Poisoned
-       | false -> key)
+       | true -> reraise Mutex.Poisoned
+       | false -> ())
   ;;
 end

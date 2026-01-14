@@ -19,6 +19,8 @@ val failwith : string -> 'a
 module Atomic : sig
   type 'a t := 'a Stdlib.Atomic.t
 
+  external get_contended : 'a. 'a t -> 'a = "%atomic_load"
+
   module Local : sig
     external make : 'a -> ('a t[@local_opt]) = "%makemutable"
     external make_contended : 'a -> ('a t[@local_opt]) = "caml_atomic_make_contended"
@@ -42,18 +44,6 @@ module Atomic : sig
     external logxor : int t -> int -> unit = "caml_atomic_lxor_stub"
     val incr : int t -> unit
     val decr : int t -> unit
-  end
-
-  module Contended : sig
-    external get : 'a. 'a t -> 'a = "%atomic_load"
-    external set : 'a. 'a t -> 'a -> unit = "caml_atomic_set_stub"
-    external exchange : 'a. 'a t -> 'a -> 'a = "%atomic_exchange"
-    external compare_and_set : 'a. 'a t -> 'a -> 'a -> bool = "%atomic_cas"
-
-    external compare_exchange
-      : 'a.
-      'a t -> 'a -> 'a -> 'a
-      = "caml_atomic_compare_exchange_stub"
   end
 
   module Expert : sig
@@ -268,6 +258,12 @@ module Obj : sig
   [@@layout_poly]
 
   external magic_uncontended : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"
+  [@@layout_poly]
+
+  external magic_read_write_uncontended
+    : 'a.
+    ('a[@local_opt]) -> ('a[@local_opt])
+    = "%identity"
   [@@layout_poly]
 
   external magic_unique : 'a. ('a[@local_opt]) -> ('a[@local_opt]) = "%identity"

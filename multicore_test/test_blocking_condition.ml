@@ -1,8 +1,9 @@
 open! Base
 open! Await
 open Basement
-open Blocking_sync [@@alert "-deprecated"]
+open Capsule.Blocking_sync [@@alert "-deprecated"]
 module Atomic = Stdlib.Atomic
+module Capsule = Capsule.Expert
 
 external ref : 'a -> 'a ref = "%makemutable"
 external ( ! ) : 'a ref -> 'a = "%field0"
@@ -11,7 +12,7 @@ external ( := ) : 'a ref -> 'a -> unit = "%setfield0"
 let cpu_relax = Stdlib_shim.Domain.cpu_relax
 
 let%expect_test "signal" =
-  let%with.tilde.stack conc = Concurrent_in_thread.with_concurrent Terminator.never in
+  let%with.tilde.stack conc = Concurrent_in_thread.with_blocking Terminator.never in
   let (P k) = Capsule.create () in
   let mutex = Mutex.create k in
   let cond = Condition.create () in
@@ -41,7 +42,7 @@ let%expect_test "signal" =
 ;;
 
 let%expect_test "broadcast" =
-  let%with.tilde.stack conc = Concurrent_in_thread.with_concurrent Terminator.never in
+  let%with.tilde.stack conc = Concurrent_in_thread.with_blocking Terminator.never in
   let (P k) = Capsule.create () in
   let mutex = Mutex.create k in
   let cond = Condition.create () in

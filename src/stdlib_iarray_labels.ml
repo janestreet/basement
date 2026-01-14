@@ -34,9 +34,9 @@ external unsafe_set_mutable : 'a array -> int -> 'a -> unit = "%array_unsafe_set
    pointers" restriction for the local stack if not used carefully.  Each of
    these can either make a local mutable array or mutate its contents, and if
    not careful, this can lead to an array's contents pointing forwards. *)
-external make_mutable_local : int -> 'a -> 'a array = "caml_make_vect"
-external unsafe_of_local_array : 'a array -> 'a iarray = "%identity"
-external unsafe_set_local : 'a array -> int -> 'a -> unit = "%array_unsafe_set"
+external make_mutable_local : 'a. int -> 'a -> 'a array = "caml_make_vect"
+external unsafe_of_local_array : 'a. 'a array -> 'a iarray = "%identity"
+external unsafe_set_local : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
 
 (* We can't use immutable array literals in this file, since we don't want to
    require the stdlib to be compiled with extensions, so instead of [[::]] we
@@ -47,7 +47,7 @@ external unsafe_set_local : 'a array -> int -> 'a -> unit = "%array_unsafe_set"
    inline both [unsafe_init_local] *and* [f]. *)
 
 (** Precondition: [l >= 0]. *)
-let[@inline always] unsafe_init_local l (f : int -> 'a) =
+let[@inline always] unsafe_init_local (type a) l (f : int -> a) =
   if l = 0
   then unsafe_of_local_array [||]
   else (

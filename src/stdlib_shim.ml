@@ -12,6 +12,8 @@ let failwith s = raise (Failure s)
 module Atomic = struct
   type 'a t = 'a Stdlib.Atomic.t
 
+  external get_contended : 'a t -> 'a = "%atomic_load"
+
   module Local = struct
     external make : 'a -> ('a t[@local_opt]) = "%makemutable"
     external make_contended : 'a -> ('a t[@local_opt]) = "caml_atomic_make_contended"
@@ -36,20 +38,6 @@ module Atomic = struct
 
     let incr r = add r 1
     let decr r = sub r 1
-  end
-
-  module Contended = struct
-    external get : 'a t -> 'a = "%atomic_load"
-    external set : 'a t -> 'a -> unit = "caml_atomic_set_stub"
-    external exchange : 'a t -> 'a -> 'a = "%atomic_exchange"
-    external compare_and_set : 'a t -> 'a -> 'a -> bool = "%atomic_cas"
-
-    external compare_exchange
-      :  'a t
-      -> 'a
-      -> 'a
-      -> 'a
-      = "caml_atomic_compare_exchange_stub"
   end
 
   module Expert = struct
@@ -223,6 +211,7 @@ end
 module Obj = struct
   external magic_portable : 'a -> 'a = "%identity"
   external magic_uncontended : 'a -> 'a = "%identity"
+  external magic_read_write_uncontended : 'a -> 'a = "%identity"
   external magic_unique : 'a -> 'a = "%identity"
   external magic_many : 'a -> 'a = "%identity"
   external magic_unyielding : 'a -> 'a = "%identity"
