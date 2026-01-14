@@ -54,13 +54,7 @@ external magic_uncontended__promise_deeply_immutable
   @@ portable
   = "%identity"
 
-external magic_portable__first_class_module
-  :  'a
-  -> 'a @ portable
-  @@ portable
-  = "%identity"
-
-external magic_uncontended__first_class_module
+external magic_uncontended__promise_deeply_immutable_module
   :  'a @ contended
   -> 'a
   @@ portable

@@ -106,7 +106,7 @@ Caml_inline int blocking_mutex_destroy(blocking_mutex mut) {
   caml_stat_free(mut);
   return MUTEX_SUCCESS;
 #else
-  if (sem_close(&mut->sem) == MUTEX_SUCCESS) {
+  if (sem_destroy(&mut->sem) == MUTEX_SUCCESS) {
     caml_stat_free(mut);
     return MUTEX_SUCCESS;
   }
