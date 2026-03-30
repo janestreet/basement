@@ -35,3 +35,9 @@ external magic_uncontended__needs_base_and_core : 'a -> 'a = "%identity"
 external magic_portable__needs_portable_functors : 'a -> 'a = "%identity"
 external magic_uncontended__promise_deeply_immutable : 'a -> 'a = "%identity"
 external magic_uncontended__promise_deeply_immutable_module : 'a -> 'a = "%identity"
+external magic_uncontended__racy_but_ok_because_memory_model : 'a -> 'a = "%identity"
+
+external magic_uncontended__racy_but_ok_because_memory_model__portable
+  :  'a
+  -> 'a
+  = "%identity"

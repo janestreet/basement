@@ -9,20 +9,26 @@ type +'a t
 (** An alias for the type of immutable arrays. *)
 type 'a iarray = 'a t
 
-external unsafe_of_array : 'a array -> 'a iarray = "%identity"
+external unsafe_of_array : 'a. 'a array -> 'a iarray = "%identity"
 
 (** Return the length (number of elements) of the given immutable array. *)
-external length : 'a iarray -> int = "%array_length"
+external length : 'a. 'a iarray -> int = "%array_length"
+[@@layout_poly]
 
 (** [get a n] returns the element number [n] of immutable array [a]. The first element has
     number 0. The last element has number [length a - 1]. You can also write [a.:(n)]
     instead of [get a n].
 
     @raise Invalid_argument if [n] is outside the range 0 to [(length a - 1)]. *)
-external get : ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
+external get : 'a. ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
+[@@layout_poly]
 
 (** A synonym for [get]. *)
-external ( .:() ) : ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
+external ( .:() )
+  : 'a.
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
+  = "%array_safe_get"
+[@@layout_poly]
 
 (** [init n ~f] returns a fresh immutable array of length [n], with element number [i]
     initialized to the result of [f i]. In other terms, [init n ~f] tabulates the results
@@ -121,13 +127,13 @@ val map_local_output : f:('a -> 'b) -> 'a iarray -> 'b iarray
 val mapi : f:(int -> 'a -> 'b) -> 'a iarray -> 'b iarray
 
 (** The locally-scoped and locally-allocating version of [mapi]. *)
-val mapi_local : f:(int -> 'a -> 'b) -> 'a iarray -> 'b iarray
+val mapi_local : 'a 'b. f:(int -> 'a -> 'b) -> 'a iarray -> 'b iarray
 
 (** The locally-constrained but globally-allocating version of [mapi]. *)
-val mapi_local_input : f:(int -> 'a -> 'b) -> 'a iarray -> 'b iarray
+val mapi_local_input : 'a 'b. f:(int -> 'a -> 'b) -> 'a iarray -> 'b iarray
 
 (** The locally-allocating but global-input version of [mapi]. *)
-val mapi_local_output : f:(int -> 'a -> 'b) -> 'a iarray -> 'b iarray
+val mapi_local_output : 'a 'b. f:(int -> 'a -> 'b) -> 'a iarray -> 'b iarray
 
 (** [fold_left ~f ~init a] computes [f (... (f (f init a.:(0)) a.:(1)) ...) a.:(n-1)],
     where [n] is the length of the immutable array [a]. *)
@@ -386,7 +392,7 @@ val of_seq : 'a Seq.t -> 'a iarray
 (*_ The following is for system use only. Do not call directly. *)
 
 external unsafe_get
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : 'a.
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   = "%array_unsafe_get"
+[@@layout_poly]

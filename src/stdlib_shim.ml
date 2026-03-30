@@ -68,6 +68,8 @@ module Domain = struct
     if runtime5 () then Domain.recommended_domain_count else fun () -> 1
   ;;
 
+  external self_index : unit -> int = "basement_domain_self_index" [@@noalloc]
+
   module Safe = struct
     module DLS = struct
       type 'a key = 'a Domain.DLS.key

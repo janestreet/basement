@@ -125,3 +125,20 @@ external magic_uncontended__promise_deeply_immutable : 'a -> 'a = "%identity"
     We distinguish the two as the work needed in the compiler to support them are
     different. *)
 external magic_uncontended__promise_deeply_immutable_module : 'a -> 'a = "%identity"
+
+(** Unsafely assert that a value is uncontended, and that operations on the value can
+    cause data races, but that those data races cannot cause unsoundness because of the
+    OCaml memory model. No long-term guarantees are made about whether or not this
+    function is sound to use; in particular, data races can in fact cause torn reads or
+    writes (in violation of the OCaml memory model) on unboxed products, and may be made
+    more unsound at any point in the future. The point of this function is to document all
+    of the places where we are depending on the safety provided by the OCaml memory model
+    to intentionally race (for example, to do double-checked locking), so that we can
+    replace all of those usages with a first-class language feature (such as an attribute
+    tagging a mutable field as racy, or a racy array type) at some point in the future. *)
+external magic_uncontended__racy_but_ok_because_memory_model : 'a -> 'a = "%identity"
+
+external magic_uncontended__racy_but_ok_because_memory_model__portable
+  :  'a
+  -> 'a
+  = "%identity"

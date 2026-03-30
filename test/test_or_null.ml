@@ -1,17 +1,18 @@
 open! Base
 open Basement
+open Or_null_shim.Export
 
 let%test_unit "pattern-matching [Null]" =
-  let x = Or_null_shim.Null in
+  let x = Null in
   match x with
-  | Or_null_shim.Null -> ()
-  | Or_null_shim.This _ -> assert false
+  | Null -> ()
+  | This _ -> assert false
 ;;
 
 let%test_unit "pattern-matching [This]" =
-  let y = Or_null_shim.This 3 in
+  let y = This 3 in
   match y with
-  | Or_null_shim.This 3 -> ()
+  | This 3 -> ()
   | _ -> assert false
 ;;
 
@@ -20,7 +21,7 @@ external int_as_pointer : int -> int or_null = "%int_as_pointer"
 let%test_unit "[Null] is represented as [0] pointer" =
   let n = int_as_pointer 0 in
   match n with
-  | Or_null_shim.Null -> ()
+  | Null -> ()
   | _ -> assert false
 ;;
 
@@ -29,26 +30,26 @@ external int_as_int : int -> int or_null = "%opaque"
 let%test_unit "[This x] and [x] share representation" =
   let m = int_as_int 5 in
   match m with
-  | Or_null_shim.This 5 -> ()
-  | Or_null_shim.This _ -> assert false
-  | Or_null_shim.Null -> assert false
+  | This 5 -> ()
+  | This _ -> assert false
+  | Null -> assert false
 ;;
 
 let%test_unit "pattern-matching tuples containing [or_null]" =
-  let x = Or_null_shim.Null, Or_null_shim.This "bar" in
+  let x = Null, This "bar" in
   match x with
-  | Or_null_shim.Null, Or_null_shim.This "foo" -> assert false
-  | Or_null_shim.Null, Or_null_shim.This "bar" -> ()
-  | _, Or_null_shim.This "bar" -> assert false
-  | Or_null_shim.Null, _ -> assert false
+  | Null, This "foo" -> assert false
+  | Null, This "bar" -> ()
+  | _, This "bar" -> assert false
+  | Null, _ -> assert false
   | _, _ -> assert false
 ;;
 
 let%test_unit "functions" =
-  let y a () = Or_null_shim.This a in
+  let y a () = This a in
   let d = y 5 in
   match d () with
-  | Or_null_shim.This 5 -> ()
+  | This 5 -> ()
   | _ -> assert false
 ;;
 
@@ -56,47 +57,47 @@ external to_bytes : 'a. 'a -> int list -> bytes = "caml_output_value_to_bytes"
 external from_bytes_unsafe : 'a. bytes -> int -> 'a = "caml_input_value_from_bytes"
 
 let%test_unit ("marshaling [This]" [@tags "no-wasm"]) =
-  let z = to_bytes (Or_null_shim.This "foo") [] in
+  let z = to_bytes (This "foo") [] in
   match from_bytes_unsafe z 0 with
-  | Or_null_shim.This "foo" -> ()
-  | Or_null_shim.This _ -> assert false
-  | Or_null_shim.Null -> assert false
+  | This "foo" -> ()
+  | This _ -> assert false
+  | Null -> assert false
 ;;
 
 let%test_unit ("marshaling [Null]" [@tags "no-wasm"]) =
-  let w = to_bytes Or_null_shim.Null [] in
+  let w = to_bytes Null [] in
   match from_bytes_unsafe w 0 with
-  | Or_null_shim.Null -> ()
-  | Or_null_shim.This _ -> assert false
+  | Null -> ()
+  | This _ -> assert false
 ;;
 
 external evil : 'a or_null -> 'a = "%opaque"
 
 let%test_unit "[This x] and [x] share representation" =
-  let e' = evil (Or_null_shim.This 4) in
+  let e' = evil (This 4) in
   match e' with
   | 4 -> ()
   | _ -> assert false
 ;;
 
-let%test_unit "Trying to create [This Or_null_shim.Null] results in [Null]" =
-  let e = Or_null_shim.This (evil Or_null_shim.Null) in
+let%test_unit "Trying to create [This Null] results in [Null]" =
+  let e = This (evil Null) in
   match e with
-  | Or_null_shim.Null -> ()
-  | Or_null_shim.This _ -> assert false
+  | Null -> ()
+  | This _ -> assert false
 ;;
 
 let%test_unit "functions and pattern-matching" =
   let f a () =
     match a with
-    | Or_null_shim.This x -> x ^ "bar"
-    | Or_null_shim.Null -> "foo"
+    | This x -> x ^ "bar"
+    | Null -> "foo"
   in
-  let g = f (Or_null_shim.This "xxx") in
+  let g = f (This "xxx") in
   (match g () with
    | "xxxbar" -> ()
    | _ -> assert false);
-  let h = f Or_null_shim.Null in
+  let h = f Null in
   match h () with
   | "foo" -> ()
   | _ -> assert false
@@ -105,17 +106,17 @@ let%test_unit "functions and pattern-matching" =
 type 'a nref = { mutable v : 'a or_null }
 
 let%test_unit "references containing [or_null]" =
-  let x : string nref = { v = Or_null_shim.Null } in
+  let x : string nref = { v = Null } in
   (match x.v with
-   | Or_null_shim.Null -> ()
+   | Null -> ()
    | _ -> assert false);
-  x.v <- Or_null_shim.This "foo";
+  x.v <- This "foo";
   (match x.v with
-   | Or_null_shim.This "foo" -> ()
+   | This "foo" -> ()
    | _ -> assert false);
-  x.v <- Or_null_shim.Null;
+  x.v <- Null;
   match x.v with
-  | Or_null_shim.Null -> ()
+  | Null -> ()
   | _ -> assert false
 ;;
 
@@ -123,30 +124,30 @@ external equal : 'a. 'a -> 'a -> bool = "%equal"
 external compare : 'a. 'a -> 'a -> int = "%compare"
 
 let%test_unit "equal" =
-  assert (equal Or_null_shim.Null Or_null_shim.Null);
-  assert (equal (Or_null_shim.This 4) (Or_null_shim.This 4));
-  assert (not (equal Or_null_shim.Null (Or_null_shim.This 4)));
-  assert (not (equal (Or_null_shim.This 8) Or_null_shim.Null));
-  assert (not (equal (Or_null_shim.This 4) (Or_null_shim.This 5)))
+  assert (equal Null Null);
+  assert (equal (This 4) (This 4));
+  assert (not (equal Null (This 4)));
+  assert (not (equal (This 8) Null));
+  assert (not (equal (This 4) (This 5)))
 ;;
 
 let%test_unit "compare" =
-  assert (compare Or_null_shim.Null Or_null_shim.Null = 0);
-  assert (compare (Or_null_shim.This 4) (Or_null_shim.This 4) = 0);
-  assert (compare Or_null_shim.Null (Or_null_shim.This 4) < 0);
-  assert (compare (Or_null_shim.This 8) Or_null_shim.Null > 0);
-  assert (compare (Or_null_shim.This 4) (Or_null_shim.This 5) < 0);
-  assert (compare (Or_null_shim.This "abc") (Or_null_shim.This "xyz") <> 0);
-  assert (compare (Or_null_shim.This "xyz") (Or_null_shim.This "xyz") = 0)
+  assert (compare Null Null = 0);
+  assert (compare (This 4) (This 4) = 0);
+  assert (compare Null (This 4) < 0);
+  assert (compare (This 8) Null > 0);
+  assert (compare (This 4) (This 5) < 0);
+  assert (compare (This "abc") (This "xyz") <> 0);
+  assert (compare (This "xyz") (This "xyz") = 0)
 ;;
 
-let%test_unit "obj_tag" = assert (Stdlib.Obj.tag (evil Or_null_shim.Null) = 1010)
+let%test_unit "obj_tag" = assert (Stdlib.Obj.tag (evil Null) = 1010)
 
 external is_null : 'a. 'a -> bool = "%is_null"
 
 let%test_unit "is_null" =
-  assert (is_null Or_null_shim.Null);
+  assert (is_null Null);
   assert (not (is_null 4));
   assert (not (is_null "String"));
-  assert (not (is_null (Or_null_shim.This 0)))
+  assert (not (is_null (This 0)))
 ;;

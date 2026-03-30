@@ -8,27 +8,35 @@ type 'a iarray = 'a t
 
 (* Array operations *)
 
-external length : 'a iarray -> int = "%array_length"
-external get : ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
-external ( .:() ) : ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
+external length : 'a. 'a iarray -> int = "%array_length" [@@layout_poly]
+
+external get : 'a. ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
+[@@layout_poly]
+
+external ( .:() )
+  : 'a.
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
+  = "%array_safe_get"
+[@@layout_poly]
 
 external unsafe_get
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : 'a.
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   = "%array_unsafe_get"
+[@@layout_poly]
 
-external concat : 'a iarray list -> 'a iarray = "caml_array_concat"
-external concat_local : 'a iarray list -> 'a iarray = "caml_array_concat"
-external append_prim : 'a iarray -> 'a iarray -> 'a iarray = "caml_array_append"
-external append_prim_local : 'a iarray -> 'a iarray -> 'a iarray = "caml_array_append"
-external unsafe_sub : 'a iarray -> int -> int -> 'a iarray = "caml_array_sub"
-external unsafe_sub_local : 'a iarray -> int -> int -> 'a iarray = "caml_array_sub"
-external unsafe_of_array : 'a array -> 'a iarray = "%identity"
-external unsafe_to_array : 'a iarray -> 'a array = "%identity"
+external concat : 'a. 'a iarray list -> 'a iarray = "caml_array_concat"
+external concat_local : 'a. 'a iarray list -> 'a iarray = "caml_array_concat"
+external append_prim : 'a. 'a iarray -> 'a iarray -> 'a iarray = "caml_array_append"
+external append_prim_local : 'a. 'a iarray -> 'a iarray -> 'a iarray = "caml_array_append"
+external unsafe_sub : 'a. 'a iarray -> int -> int -> 'a iarray = "caml_array_sub"
+external unsafe_sub_local : 'a. 'a iarray -> int -> int -> 'a iarray = "caml_array_sub"
+external unsafe_of_array : 'a. 'a array -> 'a iarray = "%identity"
+external unsafe_to_array : 'a. 'a iarray -> 'a array = "%identity"
 
 (* Used only to reimplement [init] *)
-external unsafe_set_mutable : 'a array -> int -> 'a -> unit = "%array_unsafe_set"
+external unsafe_set_mutable : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
+[@@layout_poly]
 
 (* VERY UNSAFE: Any of these functions can be used to violate the "no forward
    pointers" restriction for the local stack if not used carefully.  Each of
@@ -36,7 +44,9 @@ external unsafe_set_mutable : 'a array -> int -> 'a -> unit = "%array_unsafe_set
    not careful, this can lead to an array's contents pointing forwards. *)
 external make_mutable_local : 'a. int -> 'a -> 'a array = "caml_make_vect"
 external unsafe_of_local_array : 'a. 'a array -> 'a iarray = "%identity"
+
 external unsafe_set_local : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
+[@@layout_poly]
 
 (* We can't use immutable array literals in this file, since we don't want to
    require the stdlib to be compiled with extensions, so instead of [[::]] we
@@ -315,13 +325,21 @@ let mapi ~f a =
 let mapi_local ~f a = unsafe_init_local (length a) (fun i -> f i (unsafe_get a i))
 
 let mapi_local_input ~f a =
+  let open struct
+    external array_make : 'a. int -> 'a -> 'a array = "caml_make_vect"
+
+    external array_unsafe_set
+      : 'a.
+      ('a array[@local_opt]) -> int -> 'a -> unit
+      = "%array_unsafe_set"
+  end in
   let l = length a in
   if l = 0
   then unsafe_of_array [||]
   else (
-    let r = Stdlib.Array.make l (f 0 (unsafe_get a 0)) in
+    let r = array_make l (f 0 (unsafe_get a 0)) in
     for i = 1 to l - 1 do
-      Stdlib.Array.unsafe_set r i (f i (unsafe_get a i))
+      array_unsafe_set r i (f i (unsafe_get a i))
     done;
     unsafe_of_array r)
 ;;

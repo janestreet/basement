@@ -66,3 +66,9 @@ val to_option : 'a t -> 'a option
 
 (** [of_option o] is [This v] if [o] is [Some v] and [Null] otherwise. *)
 val of_option : 'a option -> 'a t
+
+module Export : sig
+  type nonrec 'a or_null = 'a t =
+    | Null
+    | This of 'a
+end
