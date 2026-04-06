@@ -87,3 +87,7 @@ let of_option = function
   | None -> Null
   | Some v -> This v
 ;;
+
+module Export = struct
+  type nonrec 'a or_null = 'a or_null [@@or_null_reexport]
+end

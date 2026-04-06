@@ -5,7 +5,7 @@
     This file provides the common interface between the two different implementations. *)
 
 (** Detect whether we are using the OCaml 5 runtime. *)
-external runtime5 : unit -> bool @@ portable = "%runtime5"
+external runtime5 : unit -> bool @@ stateless = "%runtime5"
 
 (** Like {!ignore}, but takes a [contended] value. This is technically strictly stronger
     than [ignore], but changing [ignore] in place causes backwards compatibility issues
@@ -123,7 +123,17 @@ module Domain : sig
       some CPU architectures. When poll insertion is disabled, this is a polling point. *)
   val cpu_relax : unit -> unit @@ portable
 
+  (** [self ()] is the identifier of the currently running domain *)
   val self : unit -> id @@ portable
+
+  (** The index of the current domain. It is an integer unique among currently-running
+      domains, in the interval [0; N-1] where N is the peak number of domains running
+      simultaneously so far.
+
+      The index of a terminated domain may be reused for a new domain. Use
+      [(Domain.self () :> int)] instead for an identifier unique among all domains ever
+      created by the program. *)
+  val self_index : unit -> int @@ portable
 
   module Safe : sig
     module DLS : sig

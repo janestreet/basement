@@ -1,4 +1,4 @@
-external runtime5 : unit -> bool @@ portable = "%runtime5"
+external runtime5 : unit -> bool @@ stateless = "%runtime5"
 
 external ignore_contended
   : ('a : value_or_null).

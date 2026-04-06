@@ -9,20 +9,32 @@
 (** An alias for the type of immutable arrays. *)
 type (+'a : any mod separable) t = 'a iarray
 
-external unsafe_of_array : 'a array -> 'a iarray = "%array_to_iarray"
+external unsafe_of_array
+  : ('a : any mod separable).
+  'a array -> 'a iarray
+  = "%array_to_iarray"
 
 (** Return the length (number of elements) of the given immutable array. *)
-external length : local_ 'a iarray -> int = "%array_length"
+external length : ('a : any mod separable). local_ 'a iarray -> int = "%array_length"
+[@@layout_poly]
 
 (** [get a n] returns the element number [n] of immutable array [a]. The first element has
     number 0. The last element has number [length a - 1]. You can also write [a.:(n)]
     instead of [get a n].
 
     @raise Invalid_argument if [n] is outside the range 0 to [(length a - 1)]. *)
-external get : ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
+external get
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
+  = "%array_safe_get"
+[@@layout_poly]
 
 (** A synonym for [get]. *)
-external ( .:() ) : ('a iarray[@local_opt]) -> int -> ('a[@local_opt]) = "%array_safe_get"
+external ( .:() )
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
+  = "%array_safe_get"
+[@@layout_poly]
 
 (** [init n ~f] returns a fresh immutable array of length [n], with element number [i]
     initialized to the result of [f i]. In other terms, [init n ~f] tabulates the results
@@ -124,15 +136,18 @@ val mapi : f:local_ (int -> 'a -> 'b) -> 'a iarray -> 'b iarray
 
 (** The locally-scoped and locally-allocating version of [mapi]. *)
 val mapi_local
-  :  f:local_ (int -> local_ 'a -> local_ 'b)
-  -> local_ 'a iarray
-  -> local_ 'b iarray
+  : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
+  f:local_ (int -> local_ 'a -> local_ 'b) -> local_ 'a iarray -> local_ 'b iarray
 
 (** The locally-constrained but globally-allocating version of [mapi]. *)
-val mapi_local_input : f:local_ (int -> local_ 'a -> 'b) -> local_ 'a iarray -> 'b iarray
+val mapi_local_input
+  : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
+  f:local_ (int -> local_ 'a -> 'b) -> local_ 'a iarray -> 'b iarray
 
 (** The locally-allocating but global-input version of [mapi]. *)
-val mapi_local_output : f:local_ (int -> 'a -> local_ 'b) -> 'a iarray -> local_ 'b iarray
+val mapi_local_output
+  : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
+  f:local_ (int -> 'a -> local_ 'b) -> 'a iarray -> local_ 'b iarray
 
 (** [fold_left ~f ~init a] computes [f (... (f (f init a.:(0)) a.:(1)) ...) a.:(n-1)],
     where [n] is the length of the immutable array [a]. *)
@@ -484,7 +499,7 @@ val of_seq : 'a Seq.t -> 'a iarray
 (*_ The following is for system use only. Do not call directly. *)
 
 external unsafe_get
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   = "%array_unsafe_get"
+[@@layout_poly]

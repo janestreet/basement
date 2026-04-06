@@ -59,3 +59,15 @@ external magic_uncontended__promise_deeply_immutable_module
   -> 'a
   @@ portable
   = "%identity"
+
+external magic_uncontended__racy_but_ok_because_memory_model
+  :  'a @ contended
+  -> 'a
+  @@ portable
+  = "%identity"
+
+external magic_uncontended__racy_but_ok_because_memory_model__portable
+  :  'a @ contended portable
+  -> 'a @ portable
+  @@ portable
+  = "%identity"

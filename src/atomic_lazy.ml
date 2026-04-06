@@ -1,5 +1,6 @@
 open Atomic_lazy_intf
 open Blocking_sync
+open Or_null_shim.Export
 
 module T = struct
   type ('a : value_or_null) inner =
@@ -80,8 +81,8 @@ module T = struct
 
   let peek { inner } =
     match Atomic.get inner with
-    | Computed value -> Or_null_shim.This value
-    | Computing | Awaiting _ | Uncomputed _ | Error _ -> Or_null_shim.Null
+    | Computed value -> This value
+    | Computing | Awaiting _ | Uncomputed _ | Error _ -> Null
   ;;
 
   let peek_opt { inner } =

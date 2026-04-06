@@ -7,72 +7,89 @@ type (+'a : any mod separable) t = 'a iarray
 
 (* Array operations *)
 
-external length : local_ 'a iarray -> int @@ portable = "%array_length"
+external length
+  : ('a : any mod separable).
+  local_ 'a iarray -> int
+  @@ portable
+  = "%array_length"
+[@@layout_poly]
 
 external get
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   @@ portable
   = "%array_safe_get"
+[@@layout_poly]
 
 external ( .:() )
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   @@ portable
   = "%array_safe_get"
+[@@layout_poly]
 
 external unsafe_get
-  :  ('a iarray[@local_opt])
-  -> int
-  -> ('a[@local_opt])
+  : ('a : any mod separable).
+  ('a iarray[@local_opt]) -> int -> ('a[@local_opt])
   @@ portable
   = "%array_unsafe_get"
+[@@layout_poly]
 
-external concat : 'a iarray list -> 'a iarray @@ portable = "caml_array_concat"
+external concat
+  : ('a : any mod separable).
+  'a iarray list -> 'a iarray
+  @@ portable
+  = "caml_array_concat"
 
 external concat_local
-  :  local_ 'a iarray list
-  -> local_ 'a iarray
+  : ('a : any mod separable).
+  local_ 'a iarray list -> local_ 'a iarray
   @@ portable
   = "caml_array_concat_local"
 
 external append_prim
-  :  'a iarray
-  -> 'a iarray
-  -> 'a iarray
+  : ('a : any mod separable).
+  'a iarray -> 'a iarray -> 'a iarray
   @@ portable
   = "caml_array_append"
 
 external append_prim_local
-  :  local_ 'a iarray
-  -> local_ 'a iarray
-  -> local_ 'a iarray
+  : ('a : any mod separable).
+  local_ 'a iarray -> local_ 'a iarray -> local_ 'a iarray
   @@ portable
   = "caml_array_append_local"
 
-external unsafe_sub : 'a iarray -> int -> int -> 'a iarray @@ portable = "caml_array_sub"
+external unsafe_sub
+  : ('a : any mod separable).
+  'a iarray -> int -> int -> 'a iarray
+  @@ portable
+  = "caml_array_sub"
 
 external unsafe_sub_local
-  :  local_ 'a iarray
-  -> int
-  -> int
-  -> local_ 'a iarray
+  : ('a : any mod separable).
+  local_ 'a iarray -> int -> int -> local_ 'a iarray
   @@ portable
   = "caml_array_sub_local"
 
-external unsafe_of_array : 'a array -> 'a iarray @@ portable = "%array_to_iarray"
-external unsafe_to_array : 'a iarray -> 'a array @@ portable = "%array_of_iarray"
+external unsafe_of_array
+  : ('a : any mod separable).
+  'a array -> 'a iarray
+  @@ portable
+  = "%array_to_iarray"
+
+external unsafe_to_array
+  : ('a : any mod separable).
+  'a iarray -> 'a array
+  @@ portable
+  = "%array_of_iarray"
 
 (* Used only to reimplement [init] *)
 external unsafe_set_mutable
-  :  'a array
-  -> int
-  -> 'a
-  -> unit
+  : ('a : any mod separable).
+  'a array -> int -> 'a -> unit
   @@ portable
   = "%array_unsafe_set"
+[@@layout_poly]
 
 (* VERY UNSAFE: Any of these functions can be used to violate the "no forward
    pointers" restriction for the local stack if not used carefully.  Each of
@@ -82,19 +99,20 @@ external make_mutable_local
   : ('a : value_or_null mod separable).
   int -> local_ 'a -> local_ 'a array
   @@ portable
-  = "caml_make_local_vect"
+  = "caml_array_make_local"
 
 external unsafe_of_local_array
-  : ('a : value_or_null mod separable).
+  : ('a : any mod separable).
   local_ 'a array -> local_ 'a iarray
   @@ portable
   = "%array_to_iarray"
 
 external unsafe_set_local
-  : ('a : value_or_null mod separable).
+  : ('a : any mod separable).
   local_ 'a array -> int -> local_ 'a -> unit
   @@ portable
   = "%array_unsafe_set"
+[@@layout_poly]
 
 (* We can't use immutable array literals in this file, since we don't want to
    require the stdlib to be compiled with extensions, so instead of [[::]] we
@@ -383,13 +401,26 @@ let mapi_local ~f a = exclave_
 ;;
 
 let mapi_local_input ~f a =
+  let open struct
+    external array_make
+      : ('a : value_or_null mod separable).
+      int -> 'a -> 'a array
+      @@ portable
+      = "caml_make_vect"
+
+    external array_unsafe_set
+      : ('a : value_or_null mod separable).
+      ('a array[@local_opt]) -> int -> 'a -> unit
+      @@ portable
+      = "%array_unsafe_set"
+  end in
   let l = length a in
   if l = 0
   then unsafe_of_array [||]
   else (
-    let r = Stdlib.Array.make l (f 0 (unsafe_get a 0)) in
+    let r = array_make l (f 0 (unsafe_get a 0)) in
     for i = 1 to l - 1 do
-      Stdlib.Array.unsafe_set r i (f i (unsafe_get a i))
+      array_unsafe_set r i (f i (unsafe_get a i))
     done;
     unsafe_of_array r)
 ;;

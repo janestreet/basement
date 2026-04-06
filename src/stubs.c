@@ -10,6 +10,11 @@
 // runtime5
 #if (OCAML_VERSION_MAJOR <= 4) || (defined JANE_STREET_HAS_NO_DOMAINS)
 
+CAMLprim value basement_domain_self_index(value unit) {
+  (void)unit;
+  return Val_int(0);
+}
+
 CAMLprim value caml_is_runtime5_stub(value unit) {
   (void)unit;
   return Val_false;
@@ -83,6 +88,12 @@ CAMLweakdef value caml_atomic_lxor_stub(value ref, value incr) {
 
 #include <caml/camlatomic.h>
 #include <caml/domain.h>
+#include <caml/startup_aux.h>
+
+CAMLprim value basement_domain_self_index(value unit) {
+  (void)unit;
+  return Val_long(caml_state->id);
+}
 
 CAMLprim value caml_is_runtime5_stub(value unit) {
   (void)unit;
