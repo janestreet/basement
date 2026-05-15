@@ -119,7 +119,17 @@ external magic_portable__needs_portable_functors : 'a -> 'a = "%identity"
     support is added for [cocontended], this value should be able to be marked as
     [cocontended]. Do not use this unless you have a reasonably strong understanding of
     what it means to be [cocontended]. *)
-external magic_uncontended__promise_deeply_immutable : 'a -> 'a = "%identity"
+external magic_uncontended__promise_deeply_immutable : 'a. 'a -> 'a = "%identity"
+
+(** Like [magic_uncontended__promise_deeply_immutable], but preserves portability.
+
+    This function is not generally necessary, since in most cases you only need
+    [magic_uncontended] *after* you are done using the portability of the value. If you
+    are reaching for this in order to have a cleaner interface (where you don't need to
+    mark a top-level value as [contended]), consider adding a portable [get_X] thunk that
+    wraps the value and calls [magic_uncontended__promise_deeply_immutable] in order to
+    avoid putting the magic at use-sites (see [Base.Avltree.get_empty], for example). *)
+external magic_uncontended__promise_deeply_immutable__portable : 'a -> 'a = "%identity"
 
 (** Similar to [magic_uncontended__promise_deeply_immutable] but for first-class modules.
     We distinguish the two as the work needed in the compiler to support them are

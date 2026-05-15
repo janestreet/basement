@@ -23,4 +23,4 @@
  (targets ocamlopt-flags)
  (deps)
  (action
-  (bash "echo '()' > ocamlopt-flags")))
+  (write-file ocamlopt-flags "()")))

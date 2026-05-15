@@ -1,0 +1,17 @@
+include Stdlib_shim.Modes
+
+type 'a global = 'a Stdlib_shim.Modes.Global.t = { global : 'a } [@@unboxed]
+type 'a portable = 'a Stdlib_shim.Modes.Portable.t = { portable : 'a } [@@unboxed]
+type 'a contended = 'a Stdlib_shim.Modes.Contended.t = { contended : 'a } [@@unboxed]
+type 'a portended = 'a Stdlib_shim.Modes.Portended.t = { portended : 'a } [@@unboxed]
+type 'a aliased = 'a Stdlib_shim.Modes.Aliased.t = { aliased : 'a } [@@unboxed]
+type 'a many = 'a Stdlib_shim.Modes.Many.t = { many : 'a } [@@unboxed]
+type 'a aliased_many = { aliased_many : 'a } [@@unboxed]
+type 'a shared = { shared : 'a } [@@unboxed]
+type 'a forkable = { forkable : 'a } [@@unboxed]
+type 'a unyielding = { unyielding : 'a } [@@unboxed]
+type 'a stateless = { stateless : 'a } [@@unboxed]
+type 'a reading = { reading : 'a } [@@unboxed]
+type 'a immutable = { immutable : 'a } [@@unboxed]
+type 'a read = { read : 'a } [@@unboxed]
+type 'a immutable_data = { immutable_data : 'a } [@@unboxed]

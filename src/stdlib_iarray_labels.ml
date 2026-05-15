@@ -38,50 +38,48 @@ external unsafe_to_array : 'a. 'a iarray -> 'a array = "%identity"
 external unsafe_set_mutable : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
 [@@layout_poly]
 
-(* VERY UNSAFE: Any of these functions can be used to violate the "no forward
-   pointers" restriction for the local stack if not used carefully.  Each of
-   these can either make a local mutable array or mutate its contents, and if
-   not careful, this can lead to an array's contents pointing forwards. *)
+(* VERY UNSAFE: Any of these functions can be used to violate the "no forward pointers"
+   restriction for the local stack if not used carefully. Each of these can either make a
+   local mutable array or mutate its contents, and if not careful, this can lead to an
+   array's contents pointing forwards. *)
 external make_mutable_local : 'a. int -> 'a -> 'a array = "caml_make_vect"
 external unsafe_of_local_array : 'a. 'a array -> 'a iarray = "%identity"
 
 external unsafe_set_local : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
 [@@layout_poly]
 
-(* We can't use immutable array literals in this file, since we don't want to
-   require the stdlib to be compiled with extensions, so instead of [[::]] we
-   use [unsafe_of_array [||]] below.  Thankfully, we never need it in the
-   [local] case so we don't have to think about the details. *)
+(* We can't use immutable array literals in this file, since we don't want to require the
+   stdlib to be compiled with extensions, so instead of [[::]] we use
+   [unsafe_of_array [||]] below. Thankfully, we never need it in the [local] case so we
+   don't have to think about the details. *)
 
-(* Really trusting the inliner here; to get maximum performance, it has to
-   inline both [unsafe_init_local] *and* [f]. *)
+(* Really trusting the inliner here; to get maximum performance, it has to inline both
+   [unsafe_init_local] *and* [f]. *)
 
 (** Precondition: [l >= 0]. *)
 let[@inline always] unsafe_init_local (type a) l (f : int -> a) =
   if l = 0
   then unsafe_of_local_array [||]
   else (
-    (* The design of this function is exceedingly delicate, and is the only way
-       we can correctly allocate a local array on the stack via mutation.  We
-       are subject to the "no forward pointers" constraint on the local stack;
-       we're not allowed to make pointers to later-allocated objects even within
-       the same stack frame.  Thus, in order to get this right, we consume O(n)
-       call-stack space: we allocate the values to put in the array, and only
-       *then* recurse, creating the array as the very last thing of all and
-       *returning* it.  This is why the [f i] call is the first thing in the
-       function, and why it's not tail-recursive; if it were tail-recursive,
-       then we wouldn't have anywhere to put the array elements during the whole
-       process. *)
-    let rec go i =
+    (* The design of this function is exceedingly delicate, and is the only way we can
+       correctly allocate a local array on the stack via mutation. We are subject to the
+       "no forward pointers" constraint on the local stack; we're not allowed to make
+       pointers to later-allocated objects even within the same stack frame. Thus, in
+       order to get this right, we consume O(n) call-stack space: we allocate the values
+       to put in the array, and only *then* recurse, creating the array as the very last
+       thing of all and *returning* it. This is why the [f i] call is the first thing in
+       the function, and why it's not tail-recursive; if it were tail-recursive, then we
+       wouldn't have anywhere to put the array elements during the whole process. *)
+    let rec go ~l ~f i =
       let x = f i in
       if i = l - 1
       then make_mutable_local l x
       else (
-        let res = go (i + 1) in
+        let res = go ~l ~f (i + 1) in
         unsafe_set_local res i x;
         res)
     in
-    unsafe_of_local_array (go 0))
+    unsafe_of_local_array (go ~l ~f 0))
 ;;
 
 (* The implementation is copied from [Array] so that [f] can be [local_] *)
@@ -364,8 +362,8 @@ let rec list_length accu = function
   | _ :: t -> list_length (succ accu) t
 ;;
 
-(* This shouldn't violate the forward-pointers restriction because the list
-   elements already exist *)
+(* This shouldn't violate the forward-pointers restriction because the list elements
+   already exist *)
 let of_list_local = function
   | [] -> unsafe_of_array [||]
   | hd :: tl as l ->
@@ -432,9 +430,9 @@ let fold_left_map_local ~f ~init:acc input_array =
   then acc, unsafe_of_local_array [||]
   else (
     let rec go acc i =
-      let acc', elt = f acc (unsafe_get input_array i) in
+      let acc, elt = f acc (unsafe_get input_array i) in
       if i = len - 1
-      then acc', make_mutable_local len elt
+      then acc, make_mutable_local len elt
       else (
         let ((_, output_array) as res) = go acc (i + 1) in
         unsafe_set_local output_array i elt;
@@ -466,9 +464,9 @@ let fold_left_map_local_output ~f ~init:acc input_array =
   then acc, unsafe_of_local_array [||]
   else (
     let rec go acc i =
-      let acc', elt = f acc (unsafe_get input_array i) in
+      let acc, elt = f acc (unsafe_get input_array i) in
       if i = len - 1
-      then acc', make_mutable_local len elt
+      then acc, make_mutable_local len elt
       else (
         let ((_, output_array) as res) = go acc (i + 1) in
         unsafe_set_local output_array i elt;
@@ -778,9 +776,8 @@ let split x =
     unsafe_of_array a, unsafe_of_array b)
 ;;
 
-(* This shouldn't violate the forward-pointers restriction because the array
-   elements already exist.  (This doesn't work for [combine], where we need to
-   create the tuples.) *)
+(* This shouldn't violate the forward-pointers restriction because the array elements
+   already exist. (This doesn't work for [combine], where we need to create the tuples.) *)
 let split_local x =
   if x = unsafe_of_array [||]
   then unsafe_of_array [||], unsafe_of_array [||]
