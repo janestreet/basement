@@ -23,4 +23,4 @@
  (targets ocamlopt-flags)
  (deps)
  (action
-  (bash "echo '(-O3 -flambda2-inline-max-depth 10)' > ocamlopt-flags")))
+  (write-file ocamlopt-flags "(-O3 -flambda2-inline-max-depth 10)")))

@@ -2,6 +2,7 @@ module Atomic_lazy = Atomic_lazy
 module Backoff = Stdlib_shim.Backoff
 module Compare_failed_or_set_here = Compare_failed_or_set_here
 module Dynamic = Dynamic
+module Modes = Modes
 module Or_null_shim = Or_null_shim
 module Portability_hacks = Portability_hacks
 module Portable_atomic = Portable_atomic

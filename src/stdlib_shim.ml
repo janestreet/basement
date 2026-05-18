@@ -111,7 +111,9 @@ module Map = struct
   module MakePortable = Map.MakePortable
 end
 
-module Modes = Modes
+module Modes = struct
+  include Stdlib.Modes
+end
 
 module MoreLabels = struct
   module Hashtbl = struct
