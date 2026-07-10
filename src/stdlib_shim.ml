@@ -160,6 +160,14 @@ module Format = struct
   end
 end
 
+module Gc = struct
+  module Safe = struct
+    let finalise = Gc.finalise
+    let finalise_last = Gc.finalise_last
+    let create_alarm = Gc.create_alarm
+  end
+end
+
 module Hashtbl = struct
   module MakePortable = Hashtbl.Make
   module MakeSeededPortable = Hashtbl.MakeSeeded

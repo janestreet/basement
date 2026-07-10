@@ -43,6 +43,11 @@ external unsafe_set_mutable : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe
    local mutable array or mutate its contents, and if not careful, this can lead to an
    array's contents pointing forwards. *)
 external make_mutable_local : 'a. int -> 'a -> 'a array = "caml_make_vect"
+
+(* Make sure this function is marked zero-alloc because we can't annotate externals as
+   zero-alloc. It's not [noalloc] because it can raise. *)
+let[@inline] [@zero_alloc assume] make_mutable_local i x = make_mutable_local i x
+
 external unsafe_of_local_array : 'a. 'a array -> 'a iarray = "%identity"
 
 external unsafe_set_local : 'a. 'a array -> int -> 'a -> unit = "%array_unsafe_set"
@@ -70,16 +75,16 @@ let[@inline always] unsafe_init_local (type a) l (f : int -> a) =
        thing of all and *returning* it. This is why the [f i] call is the first thing in
        the function, and why it's not tail-recursive; if it were tail-recursive, then we
        wouldn't have anywhere to put the array elements during the whole process. *)
-    let rec go ~l ~f i =
+    let rec go i =
       let x = f i in
       if i = l - 1
       then make_mutable_local l x
       else (
-        let res = go ~l ~f (i + 1) in
+        let res = go (i + 1) in
         unsafe_set_local res i x;
         res)
     in
-    unsafe_of_local_array (go ~l ~f 0))
+    unsafe_of_local_array (go 0))
 ;;
 
 (* The implementation is copied from [Array] so that [f] can be [local_] *)

@@ -211,6 +211,16 @@ module Format : sig
   end
 end
 
+module Gc : sig
+  type alarm := Gc.alarm
+
+  module Safe : sig
+    val finalise : ('a -> unit) -> 'a -> unit
+    val finalise_last : (unit -> unit) -> 'a -> unit
+    val create_alarm : (unit -> unit) -> alarm
+  end
+end
+
 module Hashtbl : sig
   (** Like [Make], but takes a portable [hash] function to portable [Hashtbl] operations. *)
   module MakePortable (H : sig

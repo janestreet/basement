@@ -1,6 +1,6 @@
 type 'a t = 'a Stdlib_shim.Modes.Portable.t Atomic.t Stdlib_shim.Modes.Contended.t
 
-external make : 'a. 'a -> ('a t[@local_opt]) = "%makemutable"
+val make : 'a. ?padded:bool -> 'a -> 'a t
 external make_contended : 'a. 'a -> ('a t[@local_opt]) = "caml_atomic_make_contended"
 external get : 'a. 'a t -> 'a = "%atomic_load"
 external set : 'a. 'a t -> 'a -> unit = "caml_atomic_set_stub"
