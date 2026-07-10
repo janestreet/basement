@@ -13,6 +13,12 @@ external make_contended
   @@ stateless
   = "caml_atomic_make_contended"
 
+let[@inline] make ?(padded = false) value =
+  match padded, Stdlib_shim.runtime5 () with
+  | true, true -> make_contended value
+  | _ -> make value
+;;
+
 external get
   : ('a : value_or_null).
   'a t @ local -> 'a @ contended portable

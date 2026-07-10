@@ -10,9 +10,8 @@
  (libraries)
  (preprocess no_preprocessing)
  (lint
-  (pps ppx_base ppx_base_internal ppx_base_lint -check-doc-comments
-    -type-conv-keep-w32=both -raise-on-lint-error
-    -apply=js_style,base_lint,deriving))
+  (pps ppx_base ppx_base_internal -check-doc-comments
+    -type-conv-keep-w32=both -raise-on-lint-error -apply=js_style,deriving))
  (js_of_ocaml
   (javascript_files runtime.js))
  (wasm_of_ocaml
@@ -24,3 +23,13 @@
  (deps)
  (action
   (write-file ocamlopt-flags "(-O3 -flambda2-inline-max-depth 10)")))
+
+(alias
+ (name default)
+ (deps primitives.ml.diff))
+
+(rule
+ (targets primitives.ml.diff)
+ (deps primitives.ml primitives_upstream.ml)
+ (action
+  (bash "diff %{deps} > %{targets} || true")))

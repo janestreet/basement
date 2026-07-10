@@ -101,6 +101,7 @@ module Ephemeron = struct
 end
 
 module Format = Format
+module Gc = Gc
 
 module Hashtbl = struct
   module MakePortable = Hashtbl.MakePortable

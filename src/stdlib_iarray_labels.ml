@@ -101,6 +101,10 @@ external make_mutable_local
   @@ portable
   = "caml_array_make_local"
 
+(* Make sure this function is marked zero-alloc because we can't annotate externals as
+   zero-alloc. It's not [noalloc] because it can raise. *)
+let[@inline] [@zero_alloc assume] make_mutable_local i x = exclave_ make_mutable_local i x
+
 external unsafe_of_local_array
   : ('a : any mod separable).
   local_ 'a array -> local_ 'a iarray
@@ -140,16 +144,16 @@ let[@inline always] unsafe_init_local
        thing of all and *returning* it. This is why the [f i] call is the first thing in
        the function, and why it's not tail-recursive; if it were tail-recursive, then we
        wouldn't have anywhere to put the array elements during the whole process. *)
-    let rec go ~l ~f i = exclave_
+    let rec go i = exclave_
       let x = f i in
       if i = l - 1
       then make_mutable_local l x
       else (
-        let res = go ~l ~f (i + 1) in
+        let res = go (i + 1) in
         unsafe_set_local res i x;
         res)
     in
-    unsafe_of_local_array (go ~l ~f 0))
+    unsafe_of_local_array (go 0))
 ;;
 
 (* The implementation is copied from [Array] so that [f] can be [local_] *)
