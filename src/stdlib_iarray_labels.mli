@@ -15,7 +15,7 @@ external unsafe_of_array
   = "%array_to_iarray"
 
 (** Return the length (number of elements) of the given immutable array. *)
-external length : ('a : any mod separable). local_ 'a iarray -> int = "%array_length"
+external length : ('a : any mod separable). 'a iarray @ local -> int = "%array_length"
 [@@layout_poly]
 
 (** [get a n] returns the element number [n] of immutable array [a]. The first element has
@@ -43,12 +43,12 @@ external ( .:() )
     @raise Invalid_argument
       if [n < 0] or [n > Sys.max_array_length]. If the return type of [f] is [float], then
       the maximum size is only [Sys.max_array_length / 2]. *)
-val init : ('a : value_or_null mod separable). int -> f:local_ (int -> 'a) -> 'a iarray
+val init : ('a : value_or_null mod separable). int -> f:(int -> 'a) @ local -> 'a iarray
 
 (** The locally-allocating version of [init]. *)
 val init_local
   : ('a : value_or_null mod separable).
-  int -> f:local_ (int -> local_ 'a) -> local_ 'a iarray
+  int -> f:(int -> 'a @ local) @ local -> 'a iarray @ local
 
 (** [append v1 v2] returns a fresh immutable array containing the concatenation of the
     immutable arrays [v1] and [v2].
@@ -58,7 +58,7 @@ val append : ('a : value_or_null mod separable). 'a iarray -> 'a iarray -> 'a ia
 (** The locally-allocating version of [append]. *)
 val append_local
   : ('a : value_or_null mod separable).
-  local_ 'a iarray -> local_ 'a iarray -> local_ 'a iarray
+  'a iarray @ local -> 'a iarray @ local -> 'a iarray @ local
 
 (** Same as {!append}, but concatenates a list of immutable arrays. *)
 val concat : ('a : value_or_null mod separable). 'a iarray list -> 'a iarray
@@ -66,7 +66,7 @@ val concat : ('a : value_or_null mod separable). 'a iarray list -> 'a iarray
 (** The locally-allocating version of [concat]. *)
 val concat_local
   : ('a : value_or_null mod separable).
-  local_ 'a iarray list -> local_ 'a iarray
+  'a iarray list @ local -> 'a iarray @ local
 
 (** [sub a ~pos ~len] returns a fresh immutable array of length [len], containing the
     elements number [pos] to [pos + len - 1] of immutable array [a]. This creates a copy
@@ -80,13 +80,15 @@ val sub : ('a : value_or_null mod separable). 'a iarray -> pos:int -> len:int ->
 (** The locally-allocating version of [sub]. *)
 val sub_local
   : ('a : value_or_null mod separable).
-  local_ 'a iarray -> pos:int -> len:int -> local_ 'a iarray
+  'a iarray @ local -> pos:int -> len:int -> 'a iarray @ local
 
 (** [to_list a] returns the list of all the elements of [a]. *)
 val to_list : ('a : value_or_null mod separable). 'a iarray -> 'a list
 
 (** The locally-allocating version of []. *)
-val to_list_local : ('a : value_or_null mod separable). local_ 'a iarray -> local_ 'a list
+val to_list_local
+  : ('a : value_or_null mod separable).
+  'a iarray @ local -> 'a list @ local
 
 (** [of_list l] returns a fresh immutable array containing the elements of [l].
 
@@ -94,7 +96,9 @@ val to_list_local : ('a : value_or_null mod separable). local_ 'a iarray -> loca
 val of_list : ('a : value_or_null mod separable). 'a list -> 'a iarray
 
 (** The locally-allocating version of [of_list]. *)
-val of_list_local : ('a : value_or_null mod separable). local_ 'a list -> local_ 'a iarray
+val of_list_local
+  : ('a : value_or_null mod separable).
+  'a list @ local -> 'a iarray @ local
 
 (** {1 Converting to and from mutable arrays} *)
 
@@ -110,72 +114,72 @@ val of_array : ('a : value_or_null mod separable). 'a array -> 'a iarray
 
 (** [iter ~f a] applies function [f] in turn to all the elements of [a]. It is equivalent
     to [f a.:(0); f a.:(1); ...; f a.:(length a - 1); ()]. *)
-val iter : ('a : value_or_null mod separable). f:local_ ('a -> unit) -> 'a iarray -> unit
+val iter : ('a : value_or_null mod separable). f:('a -> unit) @ local -> 'a iarray -> unit
 
 (** The locally-scoped version of [iter]. *)
 val iter_local
   : ('a : value_or_null mod separable).
-  f:local_ (local_ 'a -> unit) -> local_ 'a iarray -> unit
+  f:('a @ local -> unit) @ local -> 'a iarray @ local -> unit
 
 (** Same as {!iter}, but the function is applied to the index of the element as first
     argument, and the element itself as second argument. *)
 val iteri
   : ('a : value_or_null mod separable).
-  f:local_ (int -> 'a -> unit) -> 'a iarray -> unit
+  f:(int -> 'a -> unit) @ local -> 'a iarray -> unit
 
 (** The locally-scoped version of [iteri]. *)
 val iteri_local
   : ('a : value_or_null mod separable).
-  f:local_ (int -> local_ 'a -> unit) -> local_ 'a iarray -> unit
+  f:(int -> 'a @ local -> unit) @ local -> 'a iarray @ local -> unit
 
 (** [map ~f a] applies function [f] to all the elements of [a], and builds an immutable
     array with the results returned by [f]:
     [[| f a.:(0); f a.:(1); ...; f a.:(length a - 1) |]]. *)
 val map
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> 'b) -> 'a iarray -> 'b iarray
+  f:('a -> 'b) @ local -> 'a iarray -> 'b iarray
 
 (** The locally-scoped and locally-allocating version of [map]. *)
 val map_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b) -> local_ 'a iarray -> local_ 'b iarray
+  f:('a @ local -> 'b @ local) @ local -> 'a iarray @ local -> 'b iarray @ local
 
 (** The locally-constrained but globally-allocating version of [map]. *)
 val map_local_input
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b) -> local_ 'a iarray -> 'b iarray
+  f:('a @ local -> 'b) @ local -> 'a iarray @ local -> 'b iarray
 
 (** The locally-allocating but global-input version of [map]. *)
 val map_local_output
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b) -> 'a iarray -> local_ 'b iarray
+  f:('a -> 'b @ local) @ local -> 'a iarray -> 'b iarray @ local
 
 (** Same as {!map}, but the function is applied to the index of the element as first
     argument, and the element itself as second argument. *)
 val mapi
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (int -> 'a -> 'b) -> 'a iarray -> 'b iarray
+  f:(int -> 'a -> 'b) @ local -> 'a iarray -> 'b iarray
 
 (** The locally-scoped and locally-allocating version of [mapi]. *)
 val mapi_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (int -> local_ 'a -> local_ 'b) -> local_ 'a iarray -> local_ 'b iarray
+  f:(int -> 'a @ local -> 'b @ local) @ local -> 'a iarray @ local -> 'b iarray @ local
 
 (** The locally-constrained but globally-allocating version of [mapi]. *)
 val mapi_local_input
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (int -> local_ 'a -> 'b) -> local_ 'a iarray -> 'b iarray
+  f:(int -> 'a @ local -> 'b) @ local -> 'a iarray @ local -> 'b iarray
 
 (** The locally-allocating but global-input version of [mapi]. *)
 val mapi_local_output
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (int -> 'a -> local_ 'b) -> 'a iarray -> local_ 'b iarray
+  f:(int -> 'a -> 'b @ local) @ local -> 'a iarray -> 'b iarray @ local
 
 (** [fold_left ~f ~init a] computes [f (... (f (f init a.:(0)) a.:(1)) ...) a.:(n-1)],
     where [n] is the length of the immutable array [a]. *)
 val fold_left
   : ('a : value_or_null) ('b : value_or_null mod separable).
-  f:local_ ('a -> 'b -> 'a) -> init:'a -> 'b iarray -> 'a
+  f:('a -> 'b -> 'a) @ local -> init:'a -> 'b iarray -> 'a
 
 (** The locally-constrained and locally-allocating version of [fold_left].
 
@@ -183,15 +187,15 @@ val fold_left
     accumulator will be left on the local stack! *)
 val fold_left_local
   : ('a : value_or_null) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b -> local_ 'a)
-  -> init:local_ 'a
-  -> local_ 'b iarray
-  -> local_ 'a
+  f:('a @ local -> 'b @ local -> 'a @ local) @ local
+  -> init:'a @ local
+  -> 'b iarray @ local
+  -> 'a @ local
 
 (** The locally-constrained but globally-allocating version of [fold_left]. *)
 val fold_left_local_input
   : ('a : value_or_null) ('b : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b -> 'a) -> init:'a -> local_ 'b iarray -> 'a
+  f:('a -> 'b @ local -> 'a) @ local -> init:'a -> 'b iarray @ local -> 'a
 
 (** The locally-allocating but global-input version of [fold_left].
 
@@ -199,14 +203,14 @@ val fold_left_local_input
     accumulator will be left on the local stack! *)
 val fold_left_local_output
   : ('a : value_or_null) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b -> local_ 'a) -> init:local_ 'a -> 'b iarray -> local_ 'a
+  f:('a @ local -> 'b -> 'a @ local) @ local -> init:'a @ local -> 'b iarray -> 'a @ local
 
 (** [fold_left_map] is a combination of {!fold_left} and {!map} that threads an
     accumulator through calls to [f]. *)
 val fold_left_map
   : ('a : value_or_null) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ ('a -> 'b -> 'a * 'c) -> init:'a -> 'b iarray -> 'a * 'c iarray
+  f:('a -> 'b -> 'a * 'c) @ local -> init:'a -> 'b iarray -> 'a * 'c iarray
 
 (** The locally-constrained and locally-allocating version of [fold_left].
 
@@ -215,16 +219,19 @@ val fold_left_map
 val fold_left_map_local
   : ('a : value_or_null) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b -> local_ 'a * 'c)
-  -> init:local_ 'a
-  -> local_ 'b iarray
-  -> local_ 'a * 'c iarray
+  f:('a @ local -> 'b @ local -> 'a * 'c @ local) @ local
+  -> init:'a @ local
+  -> 'b iarray @ local
+  -> 'a * 'c iarray @ local
 
 (** The locally-constrained but globally-allocating version of [fold_left]. *)
 val fold_left_map_local_input
   : ('a : value_or_null) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b -> 'a * 'c) -> init:'a -> local_ 'b iarray -> 'a * 'c iarray
+  f:('a -> 'b @ local -> 'a * 'c) @ local
+  -> init:'a
+  -> 'b iarray @ local
+  -> 'a * 'c iarray
 
 (** The locally-allocating but global-input version of [fold_left].
 
@@ -233,16 +240,16 @@ val fold_left_map_local_input
 val fold_left_map_local_output
   : ('a : value_or_null) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b -> local_ 'a * 'c)
-  -> init:local_ 'a
+  f:('a @ local -> 'b -> 'a * 'c @ local) @ local
+  -> init:'a @ local
   -> 'b iarray
-  -> local_ 'a * 'c iarray
+  -> 'a * 'c iarray @ local
 
 (** [fold_right ~f a ~init] computes [f a.:(0) (f a.:(1) ( ... (f a.:(n-1) init) ...))],
     where [n] is the length of the immutable array [a]. *)
 val fold_right
   : ('a : value_or_null) ('b : value_or_null mod separable).
-  f:local_ ('b -> 'a -> 'a) -> 'b iarray -> init:'a -> 'a
+  f:('b -> 'a -> 'a) @ local -> 'b iarray -> init:'a -> 'a
 
 (** The locally-constrained and locally-allocating version of [fold_right].
 
@@ -250,15 +257,15 @@ val fold_right
     accumulator will be left on the local stack! *)
 val fold_right_local
   : ('a : value_or_null) ('b : value_or_null mod separable).
-  f:local_ (local_ 'b -> local_ 'a -> local_ 'a)
-  -> local_ 'b iarray
-  -> init:local_ 'a
-  -> local_ 'a
+  f:('b @ local -> 'a @ local -> 'a @ local) @ local
+  -> 'b iarray @ local
+  -> init:'a @ local
+  -> 'a @ local
 
 (** The locally-constrained but globally-allocating version of [fold_right]. *)
 val fold_right_local_input
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'b -> 'a -> 'a) -> local_ 'b iarray -> init:'a -> 'a
+  f:('b @ local -> 'a -> 'a) @ local -> 'b iarray @ local -> init:'a -> 'a
 
 (** The locally-allocating but global-input version of [fold_right].
 
@@ -266,7 +273,7 @@ val fold_right_local_input
     accumulator will be left on the local stack! *)
 val fold_right_local_output
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('b -> local_ 'a -> local_ 'a) -> 'b iarray -> init:local_ 'a -> local_ 'a
+  f:('b -> 'a @ local -> 'a @ local) @ local -> 'b iarray -> init:'a @ local -> 'a @ local
 
 (** {1 Iterators on two arrays} *)
 
@@ -274,25 +281,25 @@ val fold_right_local_output
     @raise Invalid_argument if the immutable arrays are not the same size. *)
 val iter2
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> 'b -> unit) -> 'a iarray -> 'b iarray -> unit
+  f:('a -> 'b -> unit) @ local -> 'a iarray -> 'b iarray -> unit
 
 (** The locally-scoped version of [iter2]. *)
 val iter2_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b -> unit)
-  -> local_ 'a iarray
-  -> local_ 'b iarray
+  f:('a @ local -> 'b @ local -> unit) @ local
+  -> 'a iarray @ local
+  -> 'b iarray @ local
   -> unit
 
 (** The first-biased partly-locally-scoped version of [iter2]. *)
 val iter2_local_first
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b -> unit) -> local_ 'a iarray -> 'b iarray -> unit
+  f:('a @ local -> 'b -> unit) @ local -> 'a iarray @ local -> 'b iarray -> unit
 
 (** The second-biased partly-locally-scoped version of [iter2]. *)
 val iter2_local_second
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b -> unit) -> 'a iarray -> local_ 'b iarray -> unit
+  f:('a -> 'b @ local -> unit) @ local -> 'a iarray -> 'b iarray @ local -> unit
 
 (** [map2 ~f a b] applies function [f] to all the elements of [a] and [b], and builds an
     immutable array with the results returned by [f]:
@@ -301,61 +308,61 @@ val iter2_local_second
 val map2
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ ('a -> 'b -> 'c) -> 'a iarray -> 'b iarray -> 'c iarray
+  f:('a -> 'b -> 'c) @ local -> 'a iarray -> 'b iarray -> 'c iarray
 
 (** The locally-scoped and locally-allocating version of [map2]. *)
 val map2_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b -> local_ 'c)
-  -> local_ 'a iarray
-  -> local_ 'b iarray
-  -> local_ 'c iarray
+  f:('a @ local -> 'b @ local -> 'c @ local) @ local
+  -> 'a iarray @ local
+  -> 'b iarray @ local
+  -> 'c iarray @ local
 
 (** The locally-scoped but globally-allocating version of [map2]. *)
 val map2_local_inputs
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b -> 'c)
-  -> local_ 'a iarray
-  -> local_ 'b iarray
+  f:('a @ local -> 'b @ local -> 'c) @ local
+  -> 'a iarray @ local
+  -> 'b iarray @ local
   -> 'c iarray
 
 (** The locally-allocating but global-inputs version of [map2]. *)
 val map2_local_output
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ ('a -> 'b -> local_ 'c) -> 'a iarray -> 'b iarray -> local_ 'c iarray
+  f:('a -> 'b -> 'c @ local) @ local -> 'a iarray -> 'b iarray -> 'c iarray @ local
 
 (** The first-biased partly-locally-scoped but globally-allocating version of [map2]. *)
 val map2_local_first_input
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b -> 'c) -> local_ 'a iarray -> 'b iarray -> 'c iarray
+  f:('a @ local -> 'b -> 'c) @ local -> 'a iarray @ local -> 'b iarray -> 'c iarray
 
 (** The second-biased partly-locally-scoped but globally-allocating version of [map2]. *)
 val map2_local_second_input
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b -> 'c) -> 'a iarray -> local_ 'b iarray -> 'c iarray
+  f:('a -> 'b @ local -> 'c) @ local -> 'a iarray -> 'b iarray @ local -> 'c iarray
 
 (** The locally-allocating and first-biased partly-locally-scoped version of [map2]. *)
 val map2_local_first_input_and_output
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b -> local_ 'c)
-  -> local_ 'a iarray
+  f:('a @ local -> 'b -> 'c @ local) @ local
+  -> 'a iarray @ local
   -> 'b iarray
-  -> local_ 'c iarray
+  -> 'c iarray @ local
 
 (** The locally-allocating and second-biased partly-locally-scoped version of [map2]. *)
 val map2_local_second_input_and_output
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable)
     ('c : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b -> local_ 'c)
+  f:('a -> 'b @ local -> 'c @ local) @ local
   -> 'a iarray
-  -> local_ 'b iarray
-  -> local_ 'c iarray
+  -> 'b iarray @ local
+  -> 'c iarray @ local
 
 (** {1 Array scanning} *)
 
@@ -363,111 +370,111 @@ val map2_local_second_input_and_output
     predicate [f]. That is, it returns [(f a1) && (f a2) && ... && (f an)]. *)
 val for_all
   : ('a : value_or_null mod separable).
-  f:local_ ('a -> bool) -> 'a iarray -> bool
+  f:('a -> bool) @ local -> 'a iarray -> bool
 
 (** The locally-scoped version of [for_all]. *)
 val for_all_local
   : ('a : value_or_null mod separable).
-  f:local_ (local_ 'a -> bool) -> local_ 'a iarray -> bool
+  f:('a @ local -> bool) @ local -> 'a iarray @ local -> bool
 
 (** [exists ~f [|a1; ...; an|]] checks if at least one element of the immutable array
     satisfies the predicate [f]. That is, it returns [(f a1) || (f a2) || ... || (f an)]. *)
 val exists
   : ('a : value_or_null mod separable).
-  f:local_ ('a -> bool) -> 'a iarray -> bool
+  f:('a -> bool) @ local -> 'a iarray -> bool
 
 (** The locally-scoped version of [exists]. *)
 val exists_local
   : ('a : value_or_null mod separable).
-  f:local_ (local_ 'a -> bool) -> local_ 'a iarray -> bool
+  f:('a @ local -> bool) @ local -> 'a iarray @ local -> bool
 
 (** Same as {!for_all}, but for a two-argument predicate.
     @raise Invalid_argument if the two immutable arrays have different lengths. *)
 val for_all2
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> 'b -> bool) -> 'a iarray -> 'b iarray -> bool
+  f:('a -> 'b -> bool) @ local -> 'a iarray -> 'b iarray -> bool
 
 (** The locally-scoped version of [for_all2]. *)
 val for_all2_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b -> bool)
-  -> local_ 'a iarray
-  -> local_ 'b iarray
+  f:('a @ local -> 'b @ local -> bool) @ local
+  -> 'a iarray @ local
+  -> 'b iarray @ local
   -> bool
 
 (** The first-biased partly-locally-scoped version of [for_all2]. *)
 val for_all2_local_first
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b -> bool) -> local_ 'a iarray -> 'b iarray -> bool
+  f:('a @ local -> 'b -> bool) @ local -> 'a iarray @ local -> 'b iarray -> bool
 
 (** The second-biased partly-locally-scoped version of [for_all2]. *)
 val for_all2_local_second
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b -> bool) -> 'a iarray -> local_ 'b iarray -> bool
+  f:('a -> 'b @ local -> bool) @ local -> 'a iarray -> 'b iarray @ local -> bool
 
 (** Same as {!exists}, but for a two-argument predicate.
     @raise Invalid_argument if the two immutable arrays have different lengths. *)
 val exists2
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> 'b -> bool) -> 'a iarray -> 'b iarray -> bool
+  f:('a -> 'b -> bool) @ local -> 'a iarray -> 'b iarray -> bool
 
 (** The locally-scoped version of [exists2]. *)
 val exists2_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b -> bool)
-  -> local_ 'a iarray
-  -> local_ 'b iarray
+  f:('a @ local -> 'b @ local -> bool) @ local
+  -> 'a iarray @ local
+  -> 'b iarray @ local
   -> bool
 
 (** The first-biased partly-locally-scoped version of [exists2]. *)
 val exists2_local_first
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b -> bool) -> local_ 'a iarray -> 'b iarray -> bool
+  f:('a @ local -> 'b -> bool) @ local -> 'a iarray @ local -> 'b iarray -> bool
 
 (** The second-biased partly-locally-scoped version of [exists2]. *)
 val exists2_local_second
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b -> bool) -> 'a iarray -> local_ 'b iarray -> bool
+  f:('a -> 'b @ local -> bool) @ local -> 'a iarray -> 'b iarray @ local -> bool
 
 (** [mem a ~set] is true if and only if [a] is structurally equal to an element of [l]
     (i.e. there is an [x] in [l] such that [compare a x = 0]). *)
-val mem : ('a : value_or_null mod separable). local_ 'a -> set:local_ 'a iarray -> bool
+val mem : ('a : value_or_null mod separable). 'a @ local -> set:'a iarray @ local -> bool
 
 (** Same as {!mem}, but uses physical equality instead of structural equality to compare
     list elements. *)
-val memq : ('a : value_or_null mod separable). local_ 'a -> set:local_ 'a iarray -> bool
+val memq : ('a : value_or_null mod separable). 'a @ local -> set:'a iarray @ local -> bool
 
 (** [find_opt ~f a] returns the first element of the immutable array [a] that satisfies
     the predicate [f], or [None] if there is no value that satisfies [f] in the array [a]. *)
 val find_opt
   : ('a : value_or_null mod separable).
-  f:local_ ('a -> bool) -> 'a iarray -> 'a option
+  f:('a -> bool) @ local -> 'a iarray -> 'a option
 
 (** The locally-constrained and locally-allocating version of []. *)
 val find_opt_local
   : ('a : value_or_null mod separable).
-  f:local_ (local_ 'a -> bool) -> local_ 'a iarray -> local_ 'a option
+  f:('a @ local -> bool) @ local -> 'a iarray @ local -> 'a option @ local
 
 (** [find_map ~f a] applies [f] to the elements of [a] in order, and returns the first
     result of the form [Some v], or [None] if none exist. *)
 val find_map
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> 'b option) -> 'a iarray -> 'b option
+  f:('a -> 'b option) @ local -> 'a iarray -> 'b option
 
 (** The locally-constrained and locally-allocating version of [find_map]. *)
 val find_map_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> local_ 'b option) -> local_ 'a iarray -> local_ 'b option
+  f:('a @ local -> 'b option @ local) @ local -> 'a iarray @ local -> 'b option @ local
 
 (** The locally-constrained but globally-allocating version of [find_map]. *)
 val find_map_local_input
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ (local_ 'a -> 'b option) -> local_ 'a iarray -> 'b option
+  f:('a @ local -> 'b option) @ local -> 'a iarray @ local -> 'b option
 
 (** The locally-allocating but global-input version of [find_map]. *)
 val find_map_local_output
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  f:local_ ('a -> local_ 'b option) -> 'a iarray -> local_ 'b option
+  f:('a -> 'b option @ local) @ local -> 'a iarray -> 'b option @ local
 
 (** {1 Arrays of pairs} *)
 
@@ -479,7 +486,7 @@ val split
 (** The locally-allocating version of [split]. *)
 val split_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  local_ ('a * 'b) iarray -> local_ 'a iarray * 'b iarray
+  ('a * 'b) iarray @ local -> 'a iarray * 'b iarray @ local
 
 (** [combine [:a1; ...; an:] [:b1; ...; bn:]] is [[:(a1,b1); ...; (an,bn):]]. Raise
     [Invalid_argument] if the two immutable iarrays have different lengths. *)
@@ -490,7 +497,7 @@ val combine
 (** The locally-allocating version of [combine]. *)
 val combine_local
   : ('a : value_or_null mod separable) ('b : value_or_null mod separable).
-  local_ 'a iarray -> local_ 'b iarray -> local_ ('a * 'b) iarray
+  'a iarray @ local -> 'b iarray @ local -> ('a * 'b) iarray @ local
 
 (** {1 Sorting} *)
 

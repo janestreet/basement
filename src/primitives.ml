@@ -1,5 +1,26 @@
 [@@@warning "-incompatible-with-upstream"]
 
+module Int32_u = struct
+  type t = int32_u
+
+  external box : (t[@unboxed]) -> (int32[@local_opt]) @@ stateless = "%box_int32"
+  external unbox : int32 @ local -> (t[@unboxed]) @@ stateless = "%unbox_int32"
+end
+
+module Int64_u = struct
+  type t = int64_u
+
+  external box : (t[@unboxed]) -> (int64[@local_opt]) @@ stateless = "%box_int64"
+  external unbox : int64 @ local -> (t[@unboxed]) @@ stateless = "%unbox_int64"
+end
+
+module Nativeint_u = struct
+  type t = nativeint_u
+
+  external box : (t[@unboxed]) -> (nativeint[@local_opt]) @@ stateless = "%box_nativeint"
+  external unbox : nativeint @ local -> (t[@unboxed]) @@ stateless = "%unbox_nativeint"
+end
+
 external box_bool
   :  (bool#[@unboxed])
   -> (bool[@local_opt])
@@ -17,14 +38,6 @@ let box_char c =
 
 external box_float : (float#[@unboxed]) -> (float[@local_opt]) @@ stateless = "%box_float"
 external box_int : (int#[@unboxed]) -> (int[@local_opt]) @@ stateless = "%int_of_int#"
-external box_int32 : (int32#[@unboxed]) -> (int32[@local_opt]) @@ stateless = "%box_int32"
-external box_int64 : (int64#[@unboxed]) -> (int64[@local_opt]) @@ stateless = "%box_int64"
-
-external box_nativeint
-  :  (nativeint#[@unboxed])
-  -> (nativeint[@local_opt])
-  @@ stateless
-  = "%box_nativeint"
 
 external unbox_bool
   :  (bool[@local_opt])
@@ -40,11 +53,3 @@ external unbox_char
 
 external unbox_float : float @ local -> (float#[@unboxed]) @@ stateless = "%unbox_float"
 external unbox_int : (int[@local_opt]) -> (int#[@unboxed]) @@ stateless = "%int#_of_int"
-external unbox_int32 : int32 @ local -> (int32#[@unboxed]) @@ stateless = "%unbox_int32"
-external unbox_int64 : int64 @ local -> (int64#[@unboxed]) @@ stateless = "%unbox_int64"
-
-external unbox_nativeint
-  :  nativeint @ local
-  -> (nativeint#[@unboxed])
-  @@ stateless
-  = "%unbox_nativeint"

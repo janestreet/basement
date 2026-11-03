@@ -1,5 +1,3 @@
-external runtime5 : unit -> bool @@ stateless = "%runtime5"
-
 external ignore_contended
   : ('a : value_or_null).
   'a @ contended -> unit
@@ -92,7 +90,20 @@ module Callback = struct
   module Safe = Callback.Safe
 end
 
-module Domain = Domain
+module Domain = Stdlib.Domain
+
+module Dynamic = struct
+  include Stdlib.Dynamic
+
+  module Scope = struct
+    type t : immutable_data
+
+    external use : t or_null -> unit @@ portable = "caml_dynamic_use_scope" [@@noalloc]
+    external freeze : unit -> t or_null @@ portable = "caml_dynamic_freeze_scope"
+  end
+end
+
+module Effect = Stdlib.Effect
 
 module Ephemeron = struct
   module K1 = Ephemeron.K1
@@ -179,6 +190,8 @@ module Obj = struct
       Stdlib.Obj.Extension_constructor.of_val (magic_read_write_uncontended x)
     ;;
   end
+
+  let hash_variant = Obj.hash_variant
 end
 
 module Printexc = struct

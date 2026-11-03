@@ -31,7 +31,7 @@ module Mutex : sig
       If [m] is already locked by the current thread, raises [Sys_error]. *)
   val with_lock
     : ('a : value_or_null).
-    t -> f:(unit -> 'a @ once unique) @ local once -> 'a @ once unique
+    t -> f:(unit -> 'a @ once unique) @ local once unyielding -> 'a @ once unique
 
   (** [destroy m] acquires the mutex [m] and marks it as poisoned. *)
   val destroy : t -> unit

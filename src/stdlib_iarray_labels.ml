@@ -9,7 +9,7 @@ type (+'a : any mod separable) t = 'a iarray
 
 external length
   : ('a : any mod separable).
-  local_ 'a iarray -> int
+  'a iarray @ local -> int
   @@ portable
   = "%array_length"
 [@@layout_poly]
@@ -43,7 +43,7 @@ external concat
 
 external concat_local
   : ('a : any mod separable).
-  local_ 'a iarray list -> local_ 'a iarray
+  'a iarray list @ local -> 'a iarray @ local
   @@ portable
   = "caml_array_concat_local"
 
@@ -55,7 +55,7 @@ external append_prim
 
 external append_prim_local
   : ('a : any mod separable).
-  local_ 'a iarray -> local_ 'a iarray -> local_ 'a iarray
+  'a iarray @ local -> 'a iarray @ local -> 'a iarray @ local
   @@ portable
   = "caml_array_append_local"
 
@@ -67,7 +67,7 @@ external unsafe_sub
 
 external unsafe_sub_local
   : ('a : any mod separable).
-  local_ 'a iarray -> int -> int -> local_ 'a iarray
+  'a iarray @ local -> int -> int -> 'a iarray @ local
   @@ portable
   = "caml_array_sub_local"
 
@@ -97,7 +97,7 @@ external unsafe_set_mutable
    array's contents pointing forwards. *)
 external make_mutable_local
   : ('a : value_or_null mod separable).
-  int -> local_ 'a -> local_ 'a array
+  int -> 'a @ local -> 'a array @ local
   @@ portable
   = "caml_array_make_local"
 
@@ -107,13 +107,13 @@ let[@inline] [@zero_alloc assume] make_mutable_local i x = exclave_ make_mutable
 
 external unsafe_of_local_array
   : ('a : any mod separable).
-  local_ 'a array -> local_ 'a iarray
+  'a array @ local -> 'a iarray @ local
   @@ portable
   = "%array_to_iarray"
 
 external unsafe_set_local
   : ('a : any mod separable).
-  local_ 'a array -> int -> local_ 'a -> unit
+  'a array @ local -> int -> 'a @ local -> unit
   @@ portable
   = "%array_unsafe_set"
 [@@layout_poly]
@@ -130,7 +130,7 @@ external unsafe_set_local
 let[@inline always] unsafe_init_local
   (type a : value_or_null mod separable)
   l
-  (local_ (f : int -> local_ a))
+  (local_ (f : int -> a @ local))
   = exclave_
   if l = 0
   then unsafe_of_local_array [||]
@@ -593,7 +593,7 @@ let fold_right_local_output ~f a ~init:x = exclave_
   go x (length a - 1)
 ;;
 
-let[@inline always] globalize_bool : local_ bool -> bool = fun b -> b
+let[@inline always] globalize_bool : bool @ local -> bool = fun b -> b
 
 let exists ~f:p a =
   let n = length a in
@@ -852,11 +852,11 @@ let find_map_local_output ~f a = exclave_
 ;;
 
 let split x =
-  if x = unsafe_of_array [||]
+  let n = length x in
+  if n = 0
   then unsafe_of_array [||], unsafe_of_array [||]
   else (
     let a0, b0 = unsafe_get x 0 in
-    let n = length x in
     let a = Stdlib.Array.make n a0 in
     let b = Stdlib.Array.make n b0 in
     for i = 1 to n - 1 do
@@ -870,11 +870,11 @@ let split x =
 (* This shouldn't violate the forward-pointers restriction because the array elements
    already exist. (This doesn't work for [combine], where we need to create the tuples.) *)
 let split_local x = exclave_
-  if x = unsafe_of_array [||]
+  let n = length x in
+  if n = 0
   then unsafe_of_array [||], unsafe_of_array [||]
   else (
     let a0, b0 = unsafe_get x 0 in
-    let n = length x in
     let a = make_mutable_local n a0 in
     let b = make_mutable_local n b0 in
     for i = 1 to n - 1 do

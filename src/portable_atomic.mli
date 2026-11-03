@@ -5,7 +5,7 @@ type ('a : value_or_null) t =
 
 val make
   : ('a : value_or_null).
-  ?padded:bool @ local -> 'a @ contended portable -> 'a t
+  ?padded:bool @ local -> 'a @ contended portable -> 'a t @ unique
   @@ stateless
 
 external make_contended

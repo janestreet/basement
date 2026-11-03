@@ -4,9 +4,6 @@
 
     This file provides the common interface between the two different implementations. *)
 
-(** Detect whether we are using the OCaml 5 runtime. *)
-external runtime5 : unit -> bool @@ stateless = "%runtime5"
-
 (** Like {!ignore}, but takes a [contended] value. This is technically strictly stronger
     than [ignore], but changing [ignore] in place causes backwards compatibility issues
     due to type inference. *)
@@ -163,6 +160,129 @@ module Domain : sig
     end
 
     val at_exit : (unit -> unit) @ portable -> unit @@ portable
+  end
+end
+
+module Dynamic : sig @@ portable
+  type 'a t : value mod contended portable
+
+  val make : unit -> 'a t
+  val get : 'a t -> 'a Or_null_shim.t @ contended portable
+
+  val with_temporarily
+    : 'a ('b : value_or_null).
+    'a t
+    -> 'a @ contended portable
+    -> f:(unit -> 'b @ local once unique) @ local once
+    -> 'b @ local once unique
+
+  module Scope : sig
+    type t : immutable_data
+
+    val use : t Or_null_shim.t -> unit
+    val freeze : unit -> t Or_null_shim.t
+  end
+end
+
+module Effect : sig
+  type 'a t := 'a Stdlib.Effect.t
+
+  module Handler : sig
+    type t : void mod external_ immutable many stateless
+  end
+
+  module Safe : sig
+    val perform : Handler.t @ local -> 'a t -> 'a
+  end
+
+  module Deep : sig
+    type ('a, 'b) continuation := ('a, 'b) Stdlib.Effect.Deep.continuation
+    type ('a, 'b) handler = ('a, 'b) Stdlib.Effect.Deep.handler
+    type 'a effect_handler := 'a Stdlib.Effect.Deep.effect_handler
+
+    module Safe : sig
+      val match_with
+        :  (Handler.t @ local -> 'c -> 'a) @ unyielding
+        -> 'c
+        -> ('a, 'b) handler
+        -> 'b
+
+      val try_with
+        :  (Handler.t @ local -> 'b -> 'a) @ unyielding
+        -> 'b
+        -> 'a effect_handler
+        -> 'a
+
+      module With_handler : sig
+        type ('a, 'b) handler =
+          { retc : Handler.t @ local -> 'a -> 'b
+          ; exnc : Handler.t @ local -> exn -> 'b
+          ; effc :
+              'c.
+              Handler.t @ local -> 'c t -> (('c, 'b) continuation -> 'b) option @ local
+          }
+
+        type 'a effect_handler =
+          { effc :
+              'b.
+              Handler.t @ local -> 'b t -> (('b, 'a) continuation -> 'a) option @ local
+          }
+
+        val match_with
+          :  Handler.t @ local
+          -> (Handler.t @ local -> 'c -> 'a) @ unyielding
+          -> 'c
+          -> ('a, 'b) handler
+          -> 'b
+
+        val try_with
+          :  Handler.t @ local
+          -> (Handler.t @ local -> 'b -> 'a) @ unyielding
+          -> 'b
+          -> 'a effect_handler
+          -> 'a
+      end
+    end
+  end
+
+  module Shallow : sig
+    type ('a, 'b) continuation := ('a, 'b) Stdlib.Effect.Shallow.continuation
+
+    module Safe : sig
+      val fiber : (Handler.t @ local -> 'a -> 'b) @ unyielding -> ('a, 'b) continuation
+
+      module With_handler : sig
+        type ('a, 'b) handler =
+          { retc : Handler.t @ local -> 'a -> 'b
+          ; exnc : Handler.t @ local -> exn -> 'b
+          ; effc :
+              'c.
+              Handler.t @ local -> 'c t -> (('c, 'a) continuation -> 'b) option @ local
+          }
+
+        val continue_with
+          :  Handler.t @ local
+          -> ('c, 'a) continuation
+          -> 'c
+          -> ('a, 'b) handler
+          -> 'b
+
+        val discontinue_with
+          :  Handler.t @ local
+          -> ('c, 'a) continuation
+          -> exn
+          -> ('a, 'b) handler
+          -> 'b
+
+        val discontinue_with_backtrace
+          :  Handler.t @ local
+          -> ('a, 'b) continuation
+          -> exn
+          -> Printexc.raw_backtrace
+          -> ('b, 'c) handler
+          -> 'c
+      end
+    end
   end
 end
 
@@ -369,6 +489,8 @@ module Obj : sig @@ portable
   module Extension_constructor : sig
     val of_val : 'a @ immutable -> extension_constructor
   end
+
+  val hash_variant : string -> int
 end
 
 module Printexc : sig @@ portable
