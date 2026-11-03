@@ -1,7 +1,11 @@
 [@@@alert "-unsafe_parallelism"]
 [@@@alert "-unsafe_multidomain"]
+[@@@alert "-unsafe_effects"]
 
-external runtime5 : unit -> bool = "caml_is_runtime5_stub"
+(* This file is only used outside of OxCaml, which doesn't need yielding for effects to be
+   safe on JSOO *)
+[@@@alert "-unsafe_effects"]
+
 external poll : unit -> unit = "%identity"
 external ignore_contended : 'a -> unit = "%ignore"
 external raise : exn -> 'a = "%reraise"
@@ -61,12 +65,9 @@ end
 module Domain = struct
   type id = int
 
-  let cpu_relax = if runtime5 () then Domain.cpu_relax else fun () -> ()
-  let self = if runtime5 () then (Domain.self :> unit -> id) else fun () -> 0
-
-  let recommended_domain_count =
-    if runtime5 () then Domain.recommended_domain_count else fun () -> 1
-  ;;
+  let cpu_relax = Domain.cpu_relax
+  let self = (Domain.self :> unit -> id)
+  let recommended_domain_count = Domain.recommended_domain_count
 
   external self_index : unit -> int = "basement_domain_self_index" [@@noalloc]
 
@@ -90,6 +91,152 @@ module Domain = struct
     module TLS = DLS
 
     let at_exit = Domain.at_exit
+  end
+end
+
+module Effect = struct
+  include Stdlib.Effect
+
+  module Handler = struct
+    type t = unit
+  end
+
+  module Safe = struct
+    let perform () eff = perform eff
+  end
+
+  module Deep = struct
+    include Deep
+
+    module Safe = struct
+      let match_with f a h = match_with (fun x -> f () x) a h
+      let try_with f a h = try_with (fun x -> f () x) a h
+
+      module With_handler = struct
+        type ('a, 'b) handler =
+          { retc : Handler.t -> 'a -> 'b
+          ; exnc : Handler.t -> exn -> 'b
+          ; effc : 'c. Handler.t -> 'c t -> (('c, 'b) continuation -> 'b) option
+          }
+
+        let match_with () f a { retc; exnc; effc } =
+          Effect.Deep.match_with
+            (fun x -> f () x)
+            a
+            { retc = (fun x -> retc () x)
+            ; exnc = (fun exn -> exnc () exn)
+            ; effc = (fun eff -> effc () eff)
+            }
+        ;;
+
+        type 'a effect_handler =
+          { effc : 'b. Handler.t -> 'b t -> (('b, 'a) continuation -> 'a) option }
+
+        let try_with () f a { effc } = try_with f a { effc = (fun eff -> effc () eff) }
+      end
+    end
+  end
+
+  module Shallow = struct
+    include Shallow
+
+    module Safe = struct
+      let fiber f = fiber (fun x -> f () x)
+
+      module With_handler = struct
+        type ('a, 'b) handler =
+          { retc : Handler.t -> 'a -> 'b
+          ; exnc : Handler.t -> exn -> 'b
+          ; effc : 'c. Handler.t -> 'c t -> (('c, 'a) continuation -> 'b) option
+          }
+
+        let continue_with () cont x { retc; exnc; effc } =
+          continue_with
+            cont
+            x
+            { retc = (fun x -> retc () x)
+            ; exnc = (fun exn -> exnc () exn)
+            ; effc = (fun eff -> effc () eff)
+            }
+        ;;
+
+        let discontinue_with () cont exn { retc; exnc; effc } =
+          discontinue_with
+            cont
+            exn
+            { retc = (fun x -> retc () x)
+            ; exnc = (fun exn -> exnc () exn)
+            ; effc = (fun eff -> effc () eff)
+            }
+        ;;
+
+        let discontinue_with_backtrace () cont exn bt { retc; exnc; effc } =
+          discontinue_with_backtrace
+            cont
+            exn
+            bt
+            { retc = (fun x -> retc () x)
+            ; exnc = (fun exn -> exnc () exn)
+            ; effc = (fun eff -> effc () eff)
+            }
+        ;;
+      end
+    end
+  end
+end
+
+module Dynamic = struct
+  module type S = sig
+    type a
+
+    val get : unit -> a Or_null_shim.t
+    val with_temporarily : a -> f:(unit -> 'b) -> 'b
+  end
+
+  type 'a t = (module S with type a = 'a)
+
+  let make (type a) () : a t =
+    (module struct
+      type nonrec a = a
+      type _ Effect.t += Get : a Effect.t
+
+      let get () =
+        try Or_null_shim.this (Effect.perform Get) with
+        | Effect.Unhandled _ -> Or_null_shim.null
+      ;;
+
+      let with_temporarily (a : a) ~f =
+        Effect.Deep.try_with
+          f
+          ()
+          { effc =
+              (fun (type e) (eff : e Effect.t) ->
+                match eff with
+                | Get ->
+                  Some
+                    (fun (k : (e, _) Effect.Deep.continuation) ->
+                      Effect.Deep.continue k a)
+                | _ -> None)
+          }
+      ;;
+    end)
+  ;;
+
+  let get (type a) (t : a t) =
+    let module T = (val t) in
+    T.get ()
+  ;;
+
+  let with_temporarily (type a) (t : a t) a ~f =
+    let module T = (val t) in
+    T.with_temporarily a ~f
+  ;;
+
+  module Scope = struct
+    type t
+
+    let use _ = failwith "dynamic binding scopes unsupported"
+    let freeze _ = failwith "dynamic binding scopes unsupported"
   end
 end
 
@@ -219,6 +366,22 @@ module MoreLabels = struct
 end
 
 module Obj = struct
+  (* Duplicated from typing/byte.ml in order to avoid dependency on ocamlcommon *)
+  let[@warning "-unused-value-declaration"] hash_variant s =
+    let accu = ref 0 in
+    for i = 0 to String.length s - 1 do
+      accu := (223 * !accu) + Char.code s.[i]
+    done;
+    (* reduce to 31 bits *)
+    accu := !accu land ((1 lsl 31) - 1);
+    (* make it signed for 64 bits architectures *)
+    if !accu > 0x3FFFFFFF then !accu - (1 lsl 31) else !accu
+  ;;
+
+  (* OCaml 5.6+ already has Obj.hash_variant, where this include then intentionally
+     shadows copy above *)
+  include Obj
+
   external magic_portable : 'a -> 'a = "%identity"
   external magic_uncontended : 'a -> 'a = "%identity"
   external magic_read_write_uncontended : 'a -> 'a = "%identity"

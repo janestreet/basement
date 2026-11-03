@@ -1,103 +1,15 @@
 
 #define CAML_INTERNALS
 
-#include <caml/version.h>
 #include <caml/mlvalues.h>
 #include <caml/memory.h>
-
-// We can't use [#ifdef CAML_RUNTIME_5] here, because upstream doesn't define it. This
-// seems to be the only way to accept js and upstream runtime4 and not js or upstream
-// runtime5
-#if (OCAML_VERSION_MAJOR <= 4) || (defined JANE_STREET_HAS_NO_DOMAINS)
-
-CAMLprim value basement_domain_self_index(value unit) {
-  (void)unit;
-  return Val_int(0);
-}
-
-CAMLprim value caml_is_runtime5_stub(value unit) {
-  (void)unit;
-  return Val_false;
-}
-
-// Copied from the flambda-backend 4 runtime. Weak symbol so that it will be overridden
-// when linking against the flambda-backend runtime.
-CAMLweakdef value caml_atomic_compare_exchange_stub(value ref, value oldv, value newv) {
-  value *p = Op_val(ref);
-  if (*p == oldv) {
-    caml_modify(p, newv);
-    return oldv;
-  } else {
-    return *p;
-  }
-}
-
-// Implemented manually, fallback implementation for shims.
-CAMLprim value caml_atomic_set_stub(value ref, value newv) {
-  value *p = Op_val(ref);
-  caml_modify(p, newv);
-  return Val_unit;
-}
-
-// Copied from the flambda-backend 4 runtime. Weak symbol so that it will be overridden
-// when linking against the flambda-backend runtime.
-CAMLweakdef value caml_atomic_add_stub(value ref, value incr) {
-  value *p = Op_val(ref);
-  CAMLassert(Is_long(*p));
-  *p = Val_long(Long_val(*p) + Long_val(incr));
-  return Val_unit;
-}
-
-// Copied from the flambda-backend 4 runtime. Weak symbol so that it will be overridden
-// when linking against the flambda-backend runtime.
-CAMLweakdef value caml_atomic_sub_stub(value ref, value incr) {
-  value *p = Op_val(ref);
-  CAMLassert(Is_long(*p));
-  *p = Val_long(Long_val(*p) - Long_val(incr));
-  return Val_unit;
-}
-
-// Copied from the flambda-backend 4 runtime. Weak symbol so that it will be overridden
-// when linking against the flambda-backend runtime.
-CAMLweakdef value caml_atomic_land_stub(value ref, value incr) {
-  value *p = Op_val(ref);
-  CAMLassert(Is_long(*p));
-  *p = Val_long(Long_val(*p) & Long_val(incr));
-  return Val_unit;
-}
-
-// Copied from the flambda-backend 4 runtime. Weak symbol so that it will be overridden
-// when linking against the flambda-backend runtime.
-CAMLweakdef value caml_atomic_lor_stub(value ref, value incr) {
-  value *p = Op_val(ref);
-  CAMLassert(Is_long(*p));
-  *p = Val_long(Long_val(*p) | Long_val(incr));
-  return Val_unit;
-}
-
-// Copied from the flambda-backend 4 runtime. Weak symbol so that it will be overridden
-// when linking against the flambda-backend runtime.
-CAMLweakdef value caml_atomic_lxor_stub(value ref, value incr) {
-  value *p = Op_val(ref);
-  CAMLassert(Is_long(*p));
-  *p = Val_long(Long_val(*p) ^ Long_val(incr));
-  return Val_unit;
-}
-
-#else
-
 #include <caml/camlatomic.h>
 #include <caml/domain.h>
 #include <caml/startup_aux.h>
 
 CAMLprim value basement_domain_self_index(value unit) {
   (void)unit;
-  return Val_long(caml_state->id);
-}
-
-CAMLprim value caml_is_runtime5_stub(value unit) {
-  (void)unit;
-  return Val_true;
+  return Val_long(Caml_state->id);
 }
 
 // Copied (with verbatim comments) from the upstream OCaml 5 runtime, which does not
@@ -249,5 +161,3 @@ CAMLweakdef value caml_atomic_lxor_stub(value ref, value incr) {
   }
   return Val_unit;
 }
-
-#endif

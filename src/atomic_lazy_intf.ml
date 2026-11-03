@@ -33,15 +33,6 @@ end
     written to align with what is expected by [ppx_template]. *)
 module type S_any_portable = sig
   type 'a t
-
-  val from_val__portable : 'a. 'a -> 'a t
-  val from_fun__portable : 'a. (unit -> 'a) -> 'a t
-  val from_fun_fixed__portable : 'a. ('a t -> 'a) -> 'a t
-  val force__contended : 'a. 'a t -> 'a
-  val is_val__contended : 'a. 'a t -> bool
-  val peek__contended : 'a. 'a t -> 'a Or_null_shim.t
-  val peek_opt__contended : 'a. 'a t -> 'a option
-  val globalize__contended : 'a 'b. 'b -> 'a t -> 'a t
 end
 
 (** The nonportable portion of [Atomic_lazy], specialized to [value] layout. *)

@@ -129,7 +129,6 @@ external magic_uncontended__promise_deeply_immutable : 'a. 'a -> 'a = "%identity
     mark a top-level value as [contended]), consider adding a portable [get_X] thunk that
     wraps the value and calls [magic_uncontended__promise_deeply_immutable] in order to
     avoid putting the magic at use-sites (see [Base.Avltree.get_empty], for example). *)
-external magic_uncontended__promise_deeply_immutable__portable : 'a -> 'a = "%identity"
 
 (** Similar to [magic_uncontended__promise_deeply_immutable] but for first-class modules.
     We distinguish the two as the work needed in the compiler to support them are
@@ -147,8 +146,3 @@ external magic_uncontended__promise_deeply_immutable_module : 'a -> 'a = "%ident
     replace all of those usages with a first-class language feature (such as an attribute
     tagging a mutable field as racy, or a racy array type) at some point in the future. *)
 external magic_uncontended__racy_but_ok_because_memory_model : 'a -> 'a = "%identity"
-
-external magic_uncontended__racy_but_ok_because_memory_model__portable
-  :  'a
-  -> 'a
-  = "%identity"

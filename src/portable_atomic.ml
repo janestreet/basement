@@ -4,9 +4,7 @@ external make : 'a. 'a -> ('a t[@local_opt]) = "%makemutable"
 external make_contended : 'a. 'a -> ('a t[@local_opt]) = "caml_atomic_make_contended"
 
 let[@inline] make ?(padded = false) value =
-  match padded, Stdlib_shim.runtime5 () with
-  | true, true -> make_contended value
-  | _ -> make value
+  if padded then make_contended value else make value
 ;;
 
 external get : 'a. 'a t -> 'a = "%atomic_load"

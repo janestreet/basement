@@ -1,7 +1,7 @@
 (library
  (foreign_stubs
   (language c)
-  (names blocking_sync dynamic stubs))
+  (names blocking_sync stubs atomic_loc_stubs))
  (name basement)
  (public_name basement)
  (ocamlopt_flags
@@ -11,7 +11,7 @@
  (preprocess no_preprocessing)
  (lint
   (pps ppx_base ppx_base_internal -check-doc-comments
-    -type-conv-keep-w32=both -raise-on-lint-error -apply=js_style,deriving))
+    -type-conv-keep-w32=both -apply=js_style,deriving))
  (js_of_ocaml
   (javascript_files runtime.js))
  (wasm_of_ocaml

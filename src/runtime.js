@@ -1,9 +1,4 @@
 
-//Provides: caml_is_runtime5_stub
-function caml_is_runtime5_stub(unit) {
-  return 0;
-}
-
 //Provides: caml_atomic_compare_exchange_stub
 function caml_atomic_compare_exchange_stub(ref, o, n) {
   var old = ref[1];
@@ -101,33 +96,4 @@ function caml_blocking_condition_signal(t) {
 //Provides: caml_thread_yield
 function caml_thread_yield(unit) {
   return 0;
-}
-
-//Provides: basement_dynamic_supported
-function basement_dynamic_supported(unit) {
-  return 0;
-}
-
-//Provides: unsupported_dynamics
-//Requires: caml_raise_sys_error
-function unsupported_dynamics() {
-  caml_raise_sys_error("Fiber-based dynamics are not supported in javascript");
-}
-
-//Provides: basement_alloc_stack_bind
-//Requires: unsupported_dynamics
-function basement_alloc_stack_bind(t1, t2, t3, t4, t5) {
-  unsupported_dynamics();
-}
-
-//Provides: basement_dynamic_make
-//Requires: unsupported_dynamics
-function basement_dynamic_make(t) {
-  unsupported_dynamics();
-}
-
-//Provides: basement_dynamic_get
-//Requires: unsupported_dynamics
-function basement_dynamic_get(t) {
-  unsupported_dynamics();
 }

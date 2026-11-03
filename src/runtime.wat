@@ -3,6 +3,7 @@
    (import "env" "custom_next_id" (func $custom_next_id (result i64)))
    (import "env" "custom_compare_id" (func $custom_compare_id (param (ref eq)) (param (ref eq)) (param i32) (result i32)))
    (import "env" "custom_hash_id" (func $custom_hash_id (param (ref eq)) (result i32)))
+    
 
    (type $block (array (mut (ref eq))))
    (type $string (array (mut i8)))
@@ -90,9 +91,6 @@
       (param (ref eq)) (result (ref eq))
       (ref.i31 (i32.const 0)))
 
-   (func (export "caml_is_runtime5_stub") (param (ref eq)) (result (ref eq))
-      (ref.i31 (i32.const 0)))
-
    (func (export "caml_atomic_compare_exchange_stub")
       (param $ref (ref eq)) (param $o (ref eq)) (param $n (ref eq))
       (result (ref eq))
@@ -101,7 +99,9 @@
       (local.set $b (ref.cast (ref $block) (local.get $ref)))
       (local.set $old (array.get $block (local.get $b) (i32.const 1)))
       (if (result (ref eq))
+          
          (ref.eq (local.get $old) (local.get $o))
+          
          (then
             (array.set $block (local.get $b) (i32.const 1) (local.get $n))
             (local.get $old))
@@ -120,9 +120,11 @@
       (local $old (ref eq))
       (local.set $b (ref.cast (ref $block) (local.get $ref)))
       (local.set $old (array.get $block (local.get $b) (i32.const 1)))
-      (array.set $block (local.get $b) (i32.const 1)
-         (ref.i31 (i32.add (i31.get_s (ref.cast (ref i31) (local.get $old)))
-                           (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
+         (array.set $block (local.get $b) (i32.const 1)
+            (ref.i31 (i32.add (i31.get_s (ref.cast (ref i31) (local.get $old)))
+                              (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
       (ref.i31 (i32.const 0)))
 
    (func (export "caml_atomic_sub_stub")
@@ -131,9 +133,11 @@
       (local $old (ref eq))
       (local.set $b (ref.cast (ref $block) (local.get $ref)))
       (local.set $old (array.get $block (local.get $b) (i32.const 1)))
-      (array.set $block (local.get $b) (i32.const 1)
-         (ref.i31 (i32.sub (i31.get_s (ref.cast (ref i31) (local.get $old)))
-                           (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
+         (array.set $block (local.get $b) (i32.const 1)
+            (ref.i31 (i32.sub (i31.get_s (ref.cast (ref i31) (local.get $old)))
+                              (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
       (ref.i31 (i32.const 0)))
 
    (func (export "caml_atomic_land_stub")
@@ -142,9 +146,11 @@
       (local $old (ref eq))
       (local.set $b (ref.cast (ref $block) (local.get $ref)))
       (local.set $old (array.get $block (local.get $b) (i32.const 1)))
-      (array.set $block (local.get $b) (i32.const 1)
-         (ref.i31 (i32.and (i31.get_s (ref.cast (ref i31) (local.get $old)))
-                           (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
+         (array.set $block (local.get $b) (i32.const 1)
+            (ref.i31 (i32.and (i31.get_s (ref.cast (ref i31) (local.get $old)))
+                              (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
       (ref.i31 (i32.const 0)))
 
    (func (export "caml_atomic_lor_stub")
@@ -153,9 +159,11 @@
       (local $old (ref eq))
       (local.set $b (ref.cast (ref $block) (local.get $ref)))
       (local.set $old (array.get $block (local.get $b) (i32.const 1)))
-      (array.set $block (local.get $b) (i32.const 1)
-         (ref.i31 (i32.or (i31.get_s (ref.cast (ref i31) (local.get $old)))
-                           (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
+         (array.set $block (local.get $b) (i32.const 1)
+            (ref.i31 (i32.or (i31.get_s (ref.cast (ref i31) (local.get $old)))
+                              (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
       (ref.i31 (i32.const 0)))
 
    (func (export "caml_atomic_lxor_stub")
@@ -164,28 +172,10 @@
       (local $old (ref eq))
       (local.set $b (ref.cast (ref $block) (local.get $ref)))
       (local.set $old (array.get $block (local.get $b) (i32.const 1)))
-      (array.set $block (local.get $b) (i32.const 1)
-         (ref.i31 (i32.xor (i31.get_s (ref.cast (ref i31) (local.get $old)))
-                           (i31.get_s (ref.cast (ref i31) (local.get $i))))))
-      (ref.i31 (i32.const 0)))
-
-   (@string $dynamics_failure "Fiber-based dynamics are not supported in wasm")
-
-   (func (export "basement_dynamic_supported") (param (ref eq)) (result (ref eq))
-     (ref.i31 (i32.const 0)))
-
-   (func $unsupported_dynamics
-      (call $caml_raise_sys_error (global.get $dynamics_failure)))
-
-   (func (export "basement_alloc_stack_bind") (param (ref eq)) (param (ref eq)) (param (ref eq)) (param (ref eq)) (param (ref eq)) (result (ref eq))
-      (call $unsupported_dynamics)
-      (ref.i31 (i32.const 0)))
-
-   (func (export "basement_dynamic_make") (param (ref eq)) (result (ref eq))
-      (call $unsupported_dynamics)
-      (ref.i31 (i32.const 0)))
-
-   (func (export "basement_dynamic_get") (param (ref eq)) (result (ref eq))
-      (call $unsupported_dynamics)
+       
+         (array.set $block (local.get $b) (i32.const 1)
+            (ref.i31 (i32.xor (i31.get_s (ref.cast (ref i31) (local.get $old)))
+                              (i31.get_s (ref.cast (ref i31) (local.get $i))))))
+       
       (ref.i31 (i32.const 0)))
 )

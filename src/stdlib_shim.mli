@@ -4,9 +4,6 @@
 
     This file provides the common interface between the two different implementations. *)
 
-(** Detect whether we are using the OCaml 5 runtime. *)
-external runtime5 : unit -> bool = "caml_is_runtime5_stub"
-
 (** Like {!ignore}, but takes a [contended] value. This is technically strictly stronger
     than [ignore], but changing [ignore] in place causes backwards compatibility issues
     due to type inference. *)
@@ -139,6 +136,107 @@ module Domain : sig
     end
 
     val at_exit : (unit -> unit) -> unit
+  end
+end
+
+module Dynamic : sig
+  type 'a t
+
+  val make : unit -> 'a t
+  val get : 'a t -> 'a Or_null_shim.t
+  val with_temporarily : 'a 'b. 'a t -> 'a -> f:(unit -> 'b) -> 'b
+
+  module Scope : sig
+    type t
+
+    val use : t Or_null_shim.t -> unit
+    val freeze : unit -> t Or_null_shim.t
+  end
+end
+
+module Effect : sig
+  type 'a t := 'a Stdlib.Effect.t
+
+  module Handler : sig
+    type t
+  end
+
+  module Safe : sig
+    val perform : Handler.t -> 'a t -> 'a
+  end
+
+  module Deep : sig
+    type ('a, 'b) continuation := ('a, 'b) Stdlib.Effect.Deep.continuation
+    type ('a, 'b) handler = ('a, 'b) Stdlib.Effect.Deep.handler
+    type 'a effect_handler := 'a Stdlib.Effect.Deep.effect_handler
+
+    module Safe : sig
+      val match_with : (Handler.t -> 'c -> 'a) -> 'c -> ('a, 'b) handler -> 'b
+      val try_with : (Handler.t -> 'b -> 'a) -> 'b -> 'a effect_handler -> 'a
+
+      module With_handler : sig
+        type ('a, 'b) handler =
+          { retc : Handler.t -> 'a -> 'b
+          ; exnc : Handler.t -> exn -> 'b
+          ; effc : 'c. Handler.t -> 'c t -> (('c, 'b) continuation -> 'b) option
+          }
+
+        type 'a effect_handler =
+          { effc : 'b. Handler.t -> 'b t -> (('b, 'a) continuation -> 'a) option }
+
+        val match_with
+          :  Handler.t
+          -> (Handler.t -> 'c -> 'a)
+          -> 'c
+          -> ('a, 'b) handler
+          -> 'b
+
+        val try_with
+          :  Handler.t
+          -> (Handler.t -> 'b -> 'a)
+          -> 'b
+          -> 'a effect_handler
+          -> 'a
+      end
+    end
+  end
+
+  module Shallow : sig
+    type ('a, 'b) continuation := ('a, 'b) Stdlib.Effect.Shallow.continuation
+
+    module Safe : sig
+      val fiber : (Handler.t -> 'a -> 'b) -> ('a, 'b) continuation
+
+      module With_handler : sig
+        type ('a, 'b) handler =
+          { retc : Handler.t -> 'a -> 'b
+          ; exnc : Handler.t -> exn -> 'b
+          ; effc : 'c. Handler.t -> 'c t -> (('c, 'a) continuation -> 'b) option
+          }
+
+        val continue_with
+          :  Handler.t
+          -> ('c, 'a) continuation
+          -> 'c
+          -> ('a, 'b) handler
+          -> 'b
+
+        val discontinue_with
+          :  Handler.t
+          -> ('c, 'a) continuation
+          -> exn
+          -> ('a, 'b) handler
+          -> 'b
+
+        val discontinue_with_backtrace
+          :  Handler.t
+          -> ('a, 'b) continuation
+          -> exn
+          -> Printexc.raw_backtrace
+          -> ('b, 'c) handler
+          -> 'c
+      end
+    end
   end
 end
 
@@ -297,6 +395,8 @@ module Obj : sig
   module Extension_constructor : sig
     val of_val : 'a -> extension_constructor
   end
+
+  val hash_variant : string -> int
 end
 
 module Printexc : sig
